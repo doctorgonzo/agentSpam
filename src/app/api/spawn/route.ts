@@ -5,7 +5,7 @@ export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const body: SpawnRequest = await req.json();
-  const { prompt, file } = body;
+  const { prompt, file, mode } = body;
 
   if (!prompt && !file) {
     return new Response(JSON.stringify({ error: "Need a prompt or file" }), {
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       };
 
       try {
-        await runAgentTree(prompt, file, emit, abort.signal);
+        await runAgentTree(prompt, file, emit, abort.signal, mode);
       } catch (err) {
         if (!abort.signal.aborted) {
           const msg = err instanceof Error ? err.message : "Engine failed";

@@ -2,12 +2,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   AgentEvent,
   AgentNode,
+  CustomSpecialist,
   FileAttachment,
   MAX_AGENTS,
   MAX_DEPTH,
+  MISSION_MODES,
   MODEL_IDS,
   MODEL_LABELS,
   MODEL_PRICES,
+  MissionMode,
   ModelTier,
   Specialty,
   WEB_SEARCH_COST,
@@ -37,6 +40,7 @@ interface Subtask {
   label: string;
   description: string;
   specialty?: Specialty;
+  customSpecialist?: CustomSpecialist;
 }
 
 interface DecomposeResult {
@@ -51,20 +55,44 @@ interface DirectResult {
 
 type AgentResponse = DecomposeResult | DirectResult;
 
+function getModeAddendum(mode?: MissionMode): string {
+  if (!mode || mode === "generalist") return "";
+  const cfg = MISSION_MODES.find((m) => m.id === mode);
+  return cfg?.brainAddendum ? `\n\n${cfg.brainAddendum}` : "";
+}
+
 function buildRootPrompt(
   userPrompt: string,
+  mode?: MissionMode,
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.opus,
-    max_tokens: 700,
+    max_tokens: 1500,
     system: `You are THE BRAIN. You ONLY output JSON. You NEVER answer the user directly. Your job is splitting.
 
-Split into 3-4 subtasks. Witty 2-4 word labels. Each self-contained.
+Split into 4-5 subtasks. Witty 2-4 word labels. Each self-contained.
 
-Available "specialty" values (optional): "researcher", "calculator", "critic". Include 1 specialist (most runs benefit from a "critic"). Keep 2+ subtasks regular (no specialty) so the tree fans out.
+CRITICAL: If the user's message contains "[Live data from Scout..." or "[Document content...", that data is your sub-agents' ONLY source of facts (they have no web access). For each subtask, COPY the relevant facts (prices, names, numbers, quotes) directly into its description. Generic descriptions are useless — sub-agents need real data to produce real answers.
+
+Three kinds of subtasks:
+
+1. REGULAR (no specialty, no customSpecialist) — these fan out into deeper agents. Keep at least 2.
+
+2. PREMADE SPECIALIST — set "specialty": "researcher" | "calculator" | "critic". At most 1 premade. Optional.
+
+3. CUSTOM SPECIALIST — invent a new specialist on the spot. REQUIRED: 1 to 3 custom specialists per run. Set "customSpecialist" to an object:
+   - emoji: ONE single emoji char that fits the role
+   - role: a 1-2 sentence description of what this specialist excels at and how they think
+   DO NOT include a name — the specialist will pick its own name based on the role.
+
+Pick custom specialists that fit the user's task. Be creative — invent roles you wouldn't normally see. The custom specialists are the most exciting part of every run.${getModeAddendum(mode)}
 
 OUTPUT FORMAT — nothing else:
-{"subtasks":[{"label":"X","description":"Y","specialty":"critic"}]}`,
+{"subtasks":[
+  {"label":"X","description":"Y"},
+  {"label":"X","description":"Y","customSpecialist":{"emoji":"\u{1F50D}","role":"You are..."}},
+  {"label":"X","description":"Y","specialty":"critic"}
+]}`,
     messages: [{ role: "user", content: userPrompt }],
   };
 }
@@ -139,6 +167,39 @@ function buildCalculatorPrompt(
 
 Show your math step by step using markdown. Always state your assumptions. End with a single-line "Answer:" followed by the result. Be concise but exact — wrong numbers are unforgivable.`,
     messages: [{ role: "user", content: `Calculation: ${task}` }],
+  };
+}
+
+function buildCustomSpecialistPrompt(
+  task: string,
+  spec: CustomSpecialist,
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: MODEL_IDS.sonnet,
+    max_tokens: 600,
+    system: `You are ${spec.name || "an unnamed specialist"} ${spec.emoji} — a custom specialist agent in agentSpam.
+
+Your role: ${spec.role}
+
+Stay in character. Be sharp, specific, concise. Output markdown. Lead with your strongest finding. No preamble.`,
+    messages: [{ role: "user", content: `Your task: ${task}` }],
+  };
+}
+
+function buildNamePickerPrompt(
+  spec: CustomSpecialist,
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: MODEL_IDS.haiku,
+    max_tokens: 30,
+    system:
+      "Pick a vivid name for yourself in the format 'The X' (2-4 words). Match the role and have a little personality. Output ONLY the name. No quotes. No explanation.",
+    messages: [
+      {
+        role: "user",
+        content: `Your role: ${spec.role}\nYour emoji: ${spec.emoji}`,
+      },
+    ],
   };
 }
 
@@ -217,9 +278,56 @@ Do not explain. Do not preamble. Facts or NONE.`,
   };
 }
 
+function buildDocExtractorPrompt(
+  userPrompt: string,
+  file: FileAttachment,
+): Anthropic.MessageCreateParamsNonStreaming {
+  const content: Anthropic.MessageCreateParamsNonStreaming["messages"][0]["content"] =
+    [];
+
+  if (file.mediaType.startsWith("image/")) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: file.mediaType as
+          | "image/jpeg"
+          | "image/png"
+          | "image/gif"
+          | "image/webp",
+        data: file.data,
+      },
+    });
+  } else if (file.mediaType === "application/pdf") {
+    content.push({
+      type: "document",
+      source: {
+        type: "base64",
+        media_type: "application/pdf",
+        data: file.data,
+      },
+    });
+  }
+
+  const userTask = userPrompt || `Analyze this ${file.name}`;
+  content.push({
+    type: "text",
+    text: `User request: ${userTask}\n\nExtract the FULL key content from this document. Be thorough — include names, dates, numbers, quotes, section headings, specific items. Use markdown structure. Sub-agents downstream cannot see this file, so anything you don't extract is lost.`,
+  });
+
+  return {
+    model: MODEL_IDS.opus,
+    max_tokens: 2500,
+    system:
+      "You are THE EXTRACTOR. Your only job is reading the attached document and dumping its key content as structured text. Use markdown with clear headings. Include actual content (names, numbers, quotes) — do NOT summarize generically. Do NOT add commentary. Just the facts as they appear.",
+    messages: [{ role: "user", content }],
+  };
+}
+
 function buildRootMultimodalPrompt(
   userPrompt: string,
   file: FileAttachment,
+  mode?: MissionMode,
 ): Anthropic.MessageCreateParamsNonStreaming {
   const content: Anthropic.MessageCreateParamsNonStreaming["messages"][0]["content"] =
     [];
@@ -260,12 +368,16 @@ function buildRootMultimodalPrompt(
     max_tokens: 1500,
     system: `You are THE BRAIN. You ONLY output JSON. Never answer directly.
 
-You're analyzing a document. Read it carefully, then split the analysis into 3-4 subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
+You're analyzing a document. Read it carefully, then split the analysis into 4-5 subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
 
-Witty 2-4 word labels. Include 1 "critic" specialty. Keep 2+ subtasks regular so the tree fans out.
+Witty 2-4 word labels. Keep 2+ regular (no specialty/customSpecialist) so the tree fans out.
+
+REQUIRED: 1-3 CUSTOM specialists per run. For each custom, set "customSpecialist" to {emoji, role} — DO NOT include a name (the specialist picks its own). Invent roles that fit the document/task (e.g. a resume surgeon \u{1FA7A} for a hiring doc, a risk auditor \u{1F6A8} for a contract).
+
+Optional: at most 1 premade specialty ("researcher", "calculator", "critic").${getModeAddendum(mode)}
 
 OUTPUT FORMAT — nothing else:
-{"subtasks":[{"label":"X","description":"Y with embedded content from doc","specialty":"critic"}]}`,
+{"subtasks":[{"label":"X","description":"Y with embedded content","customSpecialist":{"emoji":"\u{1F50D}","role":"You are..."}}]}`,
     messages: [{ role: "user", content }],
   };
 }
@@ -343,6 +455,7 @@ export async function runAgentTree(
   file: FileAttachment | undefined,
   emit: (event: AgentEvent) => void,
   signal?: AbortSignal,
+  mode?: MissionMode,
 ): Promise<void> {
   agentCounter = 0;
 
@@ -381,15 +494,44 @@ export async function runAgentTree(
     }
   }
 
+  async function runExtractor(
+    p: string,
+    f: FileAttachment,
+  ): Promise<string | null> {
+    try {
+      const text = await call(buildDocExtractorPrompt(p, f));
+      return text.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
   let enrichedPrompt = prompt;
-  if (!file && prompt.trim()) {
+  let activeFile = file;
+
+  if (activeFile) {
+    // Two-pass file flow: Extractor reads the doc as text, Brain decomposes the text.
+    emit({ type: "scout_searching" });
+    const extracted = await runExtractor(prompt, activeFile);
+    if (extracted) {
+      enrichedPrompt = `${prompt || `Analyze this ${activeFile.name}`}\n\n[Document content from ${activeFile.name}]:\n${extracted}`;
+      emit({ type: "scout_complete", findings: extracted });
+    } else {
+      emit({ type: "scout_complete", findings: null });
+    }
+    // Clear the file so spawnAgent uses the text-only Brain path with the
+    // extracted content baked into enrichedPrompt. Sub-agents downstream
+    // see real document text instead of an empty multimodal stub.
+    activeFile = undefined;
+  } else if (prompt.trim()) {
     emit({ type: "scout_searching" });
     const findings = await runScoutLocal(prompt);
     if (findings) {
-      // Cap the scout dump injected into Brain's prompt — keeps Brain fast.
-      // Full findings still go to sub-agents that need them.
-      const truncated = findings.length > 1200 ? findings.slice(0, 1200) + "..." : findings;
-      enrichedPrompt = `${prompt}\n\n[Scout facts]: ${truncated}`;
+      // Pass the FULL scout findings (capped generously) — the Brain needs the
+      // real data to embed into sub-agent task descriptions. Sub-agents have
+      // no web access so anything truncated here is lost downstream.
+      const truncated = findings.length > 5000 ? findings.slice(0, 5000) + "..." : findings;
+      enrichedPrompt = `${prompt}\n\n[Live data from Scout — embed relevant facts into each subtask description so sub-agents can work with real data]:\n${truncated}`;
       emit({ type: "scout_complete", findings });
     } else {
       emit({ type: "scout_complete", findings: null });
@@ -403,6 +545,7 @@ export async function runAgentTree(
     parentId: string | null,
     specialty?: Specialty,
     criticContext?: { label: string; result: string }[],
+    customSpecialist?: CustomSpecialist,
   ): Promise<{ label: string; result: string }> {
     if (signal?.aborted) {
       return { label, result: "[stopped]" };
@@ -424,24 +567,46 @@ export async function runAgentTree(
       label,
       status: "spawning",
       specialty,
+      customSpecialist,
     };
 
     emit({ type: "agent_spawned", agent: node });
+
+    // Custom specialists pick their own name in a tiny haiku call before
+    // the main task. Fast (~1s, cheap), and the name appears immediately on
+    // the agent's badge.
+    if (customSpecialist && !customSpecialist.name) {
+      try {
+        const picked = (await call(buildNamePickerPrompt(customSpecialist)))
+          .trim()
+          .replace(/^["']|["']$/g, "")
+          .slice(0, 40);
+        if (picked) {
+          customSpecialist = { ...customSpecialist, name: picked };
+          emit({ type: "agent_named", id, name: picked });
+        }
+      } catch {
+        // ignore — agent stays unnamed, no big deal
+      }
+    }
+
     emit({ type: "agent_thinking", id });
 
     try {
       let params: Anthropic.MessageCreateParamsNonStreaming;
 
-      if (specialty === "researcher") {
+      if (customSpecialist) {
+        params = buildCustomSpecialistPrompt(task, customSpecialist);
+      } else if (specialty === "researcher") {
         params = buildResearcherPrompt(task);
       } else if (specialty === "calculator") {
         params = buildCalculatorPrompt(task);
       } else if (specialty === "critic") {
         params = buildCriticPrompt(task, criticContext || []);
-      } else if (depth === 0 && file) {
-        params = buildRootMultimodalPrompt(task, file);
+      } else if (depth === 0 && activeFile) {
+        params = buildRootMultimodalPrompt(task, activeFile, mode);
       } else if (depth === 0) {
-        params = buildRootPrompt(task);
+        params = buildRootPrompt(task, mode);
       } else if (depth >= MAX_DEPTH) {
         params = buildLeafPrompt(task);
       } else if (depth === 1) {
@@ -453,8 +618,8 @@ export async function runAgentTree(
       let responseText = await call(params);
       let parsed = parseAgentResponse(responseText);
 
-      // Specialists always answer directly — they never decompose
-      if (specialty) {
+      // Specialists (premade or custom) always answer directly — they never decompose
+      if (specialty || customSpecialist) {
         const answer = parsed.type === "answer" ? parsed.answer : responseText;
         emit({ type: "agent_complete", id, result: answer });
         return { label, result: answer };
@@ -465,14 +630,14 @@ export async function runAgentTree(
       if (depth === 0 && parsed.type !== "subtasks") {
         const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
           model: MODEL_IDS.opus,
-          max_tokens: 700,
-          system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split the user's request into 3-4 subtasks. Include 1 "critic" specialty.`,
+          max_tokens: 900,
+          system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into 4-5 subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
           messages: [
             { role: "user", content: task },
             { role: "assistant", content: responseText.slice(0, 400) },
             {
               role: "user",
-              content: `That was wrong. Output ONLY this JSON shape, nothing else:\n{"subtasks":[{"label":"X","description":"Y","specialty":"critic"}]}`,
+              content: `That was wrong. Output ONLY this JSON shape:\n{"subtasks":[{"label":"X","description":"Y","customSpecialist":{"name":"The X","emoji":"\u{1F50D}","role":"You are..."}}]}`,
             },
           ],
         };
@@ -488,27 +653,38 @@ export async function runAgentTree(
 
         // Brain-level safety net: enforce shape of the tree.
         // - At least 2 regular subtasks (so the tree fans out).
-        // - At least 1 specialist (so the run has flavor).
+        // - At most 3 custom specialists. If more, demote extras to regular.
         if (depth === 0) {
-          // Demote extra non-critic specialists if regulars < 2
-          let specialistCount = parsed.subtasks.filter(
-            (s) => s.specialty && s.specialty !== "critic",
-          ).length;
+          // Brain isn't allowed to name customs — strip any names it tried to assign
           for (const sub of parsed.subtasks) {
-            const regularCount = parsed.subtasks.filter(
-              (s) => !s.specialty,
-            ).length;
-            if (regularCount >= 2) break;
-            if (sub.specialty && sub.specialty !== "critic" && specialistCount > 1) {
-              sub.specialty = undefined;
-              specialistCount--;
+            if (sub.customSpecialist?.name) {
+              sub.customSpecialist = {
+                emoji: sub.customSpecialist.emoji,
+                role: sub.customSpecialist.role,
+              };
             }
           }
-          // Ensure at least 1 specialist — promote last regular subtask to critic
-          const hasSpecialist = parsed.subtasks.some((s) => s.specialty);
-          if (!hasSpecialist && parsed.subtasks.length >= 3) {
-            const lastRegular = [...parsed.subtasks].reverse().find((s) => !s.specialty);
-            if (lastRegular) lastRegular.specialty = "critic";
+
+          // Demote excess custom specialists beyond 3
+          let customCount = parsed.subtasks.filter((s) => s.customSpecialist).length;
+          if (customCount > 3) {
+            for (let i = parsed.subtasks.length - 1; i >= 0 && customCount > 3; i--) {
+              if (parsed.subtasks[i].customSpecialist) {
+                parsed.subtasks[i].customSpecialist = undefined;
+                customCount--;
+              }
+            }
+          }
+          // Ensure at least 2 regular subtasks — strip extras from premade specialists first
+          let regularCount = parsed.subtasks.filter(
+            (s) => !s.specialty && !s.customSpecialist,
+          ).length;
+          for (const sub of parsed.subtasks) {
+            if (regularCount >= 2) break;
+            if (sub.specialty && sub.specialty !== "critic") {
+              sub.specialty = undefined;
+              regularCount++;
+            }
           }
         }
 
@@ -517,7 +693,15 @@ export async function runAgentTree(
 
         const nonCriticResults = await Promise.all(
           nonCritics.map((sub) =>
-            spawnAgent(sub.description, sub.label, depth + 1, id, sub.specialty),
+            spawnAgent(
+              sub.description,
+              sub.label,
+              depth + 1,
+              id,
+              sub.specialty,
+              undefined,
+              sub.customSpecialist,
+            ),
           ),
         );
 

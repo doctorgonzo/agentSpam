@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileAttachment } from "@/lib/types";
+import { FileAttachment, MISSION_MODES, MissionMode } from "@/lib/types";
 
 interface InputPanelProps {
-  onSubmit: (prompt: string, file?: FileAttachment) => void;
+  onSubmit: (prompt: string, file?: FileAttachment, mode?: MissionMode) => void;
   onStop: () => void;
   isRunning: boolean;
 }
@@ -12,7 +12,9 @@ interface InputPanelProps {
 export default function InputPanel({ onSubmit, onStop, isRunning }: InputPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [file, setFile] = useState<FileAttachment | null>(null);
+  const [mode, setMode] = useState<MissionMode>("generalist");
   const fileRef = useRef<HTMLInputElement>(null);
+  const currentMode = MISSION_MODES.find((m) => m.id === mode);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -29,7 +31,7 @@ export default function InputPanel({ onSubmit, onStop, isRunning }: InputPanelPr
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!prompt.trim() && !file) return;
-    onSubmit(prompt, file ?? undefined);
+    onSubmit(prompt, file ?? undefined, mode);
   }
 
   return (
@@ -51,7 +53,7 @@ export default function InputPanel({ onSubmit, onStop, isRunning }: InputPanelPr
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <input
             ref={fileRef}
             type="file"
@@ -59,6 +61,34 @@ export default function InputPanel({ onSubmit, onStop, isRunning }: InputPanelPr
             accept="image/*,.pdf"
             className="hidden"
           />
+
+          <div className="relative">
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as MissionMode)}
+              disabled={isRunning}
+              title={currentMode?.description}
+              className="appearance-none cursor-pointer pl-7 pr-7 py-2 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:text-white hover:border-white/20 focus:outline-none focus:border-purple-500/40 transition-all text-xs disabled:opacity-30"
+            >
+              {MISSION_MODES.map((m) => (
+                <option key={m.id} value={m.id} className="bg-zinc-900">
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-sm">
+              {currentMode?.emoji}
+            </span>
+            <svg
+              className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none w-3 h-3 text-white/40"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+
 
           <button
             type="button"

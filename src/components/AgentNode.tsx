@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, Position } from "@xyflow/react";
-import { ModelTier, Specialty, SPECIALTY_EMOJI, SPECIALTY_LABELS } from "@/lib/types";
+import { CustomSpecialist, ModelTier, Specialty, SPECIALTY_EMOJI } from "@/lib/types";
 
 const tierStyles: Record<
   ModelTier,
@@ -49,6 +49,7 @@ interface AgentNodeData {
   nodeId?: string;
   selected?: boolean;
   specialty?: Specialty;
+  customSpecialist?: CustomSpecialist;
 }
 
 export default function AgentNodeComponent({
@@ -78,14 +79,16 @@ export default function AgentNodeComponent({
         relative rounded-xl border-2 px-4 py-3 min-w-[200px] max-w-[260px]
         backdrop-blur-sm transition-all duration-300 cursor-pointer
         hover:brightness-125 hover:scale-[1.02]
-        ${style.bg} ${style.border}
-        ${isActive ? `shadow-lg ${style.glow} animate-ambient-glow` : ""}
-        ${isDone ? "shadow-md animate-done-flash" : ""}
+        ${data.customSpecialist ? "bg-fuchsia-950/80 border-fuchsia-400" : `${style.bg} ${style.border}`}
+        ${data.customSpecialist && !isActive && !isDone ? "shadow-lg shadow-fuchsia-500/30" : ""}
+        ${data.customSpecialist && isDone ? "shadow-md shadow-fuchsia-500/40" : ""}
+        ${isActive ? `shadow-lg ${data.customSpecialist ? "shadow-fuchsia-500/60" : style.glow} animate-ambient-glow` : ""}
+        ${isDone && !data.customSpecialist ? "shadow-md animate-done-flash" : ""}
         ${isError ? "border-red-500 shadow-red-500/30" : ""}
-        ${data.status === "spawning" ? `scale-90 opacity-0 animate-pop-in ${burstClass[data.model]}` : ""}
-        ${isSelected ? `ring-2 ring-offset-2 ring-offset-zinc-950 ${style.ring} brightness-125` : ""}
+        ${data.status === "spawning" ? `scale-90 opacity-0 animate-pop-in ${data.customSpecialist ? "animate-spawn-burst-fuchsia" : burstClass[data.model]}` : ""}
+        ${isSelected ? `ring-2 ring-offset-2 ring-offset-zinc-950 ${data.customSpecialist ? "ring-fuchsia-400" : style.ring} brightness-125` : ""}
       `}
-      style={isActive ? { color: style.glowColor } : undefined}
+      style={isActive ? { color: data.customSpecialist ? "#d946ef" : style.glowColor } : undefined}
     >
       <Handle
         type="target"
@@ -95,12 +98,26 @@ export default function AgentNodeComponent({
 
       <div className="flex items-center gap-2 mb-1">
         <span className="text-sm">
-          {data.specialty ? SPECIALTY_EMOJI[data.specialty] : tierEmoji[data.model]}
+          {data.customSpecialist
+            ? data.customSpecialist.emoji
+            : data.specialty
+              ? SPECIALTY_EMOJI[data.specialty]
+              : tierEmoji[data.model]}
         </span>
         <span
-          className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${data.specialty ? "bg-amber-500" : style.badge} text-white`}
+          className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-white truncate max-w-[160px] ${
+            data.customSpecialist
+              ? "bg-gradient-to-r from-fuchsia-500 to-pink-500"
+              : data.specialty
+                ? "bg-amber-500"
+                : style.badge
+          }`}
         >
-          {data.specialty ? data.specialty : data.model}
+          {data.customSpecialist
+            ? data.customSpecialist.name || "\u{2728} self-naming..."
+            : data.specialty
+              ? data.specialty
+              : data.model}
         </span>
         {isDone && (
           <span className="text-emerald-400 text-xs ml-auto flex items-center gap-1">
@@ -136,6 +153,7 @@ export default function AgentNodeComponent({
       <div className="text-white font-semibold text-sm truncate">
         {data.label}
       </div>
+
 
       <div className="text-white/40 text-[11px] mt-1 line-clamp-2 leading-tight">
         {data.task.slice(0, 120)}

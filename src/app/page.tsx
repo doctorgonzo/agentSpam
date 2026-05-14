@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AgentNode, AgentEvent, FileAttachment } from "@/lib/types";
+import { AgentNode, AgentEvent, FileAttachment, MissionMode } from "@/lib/types";
 import { spawnSound, thinkingSound, completeSound, errorSound, synthesisSound } from "@/lib/sounds";
 import AgentTree from "@/components/AgentTree";
 import InputPanel from "@/components/InputPanel";
@@ -78,7 +78,7 @@ export default function Home() {
   }, []);
 
   const handleSubmit = useCallback(
-    async (prompt: string, file?: FileAttachment) => {
+    async (prompt: string, file?: FileAttachment, mode?: MissionMode) => {
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
@@ -101,7 +101,7 @@ export default function Home() {
         const res = await fetch("/api/spawn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, file }),
+          body: JSON.stringify({ prompt, file, mode }),
           signal: ac.signal,
         });
 
@@ -166,6 +166,19 @@ export default function Home() {
                   });
                   completeSound();
                   break;
+
+                case "agent_named": {
+                  const existing = agentsRef.current.get(event.id);
+                  if (existing?.customSpecialist) {
+                    updateAgent(event.id, {
+                      customSpecialist: {
+                        ...existing.customSpecialist,
+                        name: event.name,
+                      },
+                    });
+                  }
+                  break;
+                }
 
                 case "agent_error":
                   updateAgent(event.id, { status: "error" });

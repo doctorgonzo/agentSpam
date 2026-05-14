@@ -33,11 +33,29 @@ export default function DetailPanel({ agent, onClose }: DetailPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${agent.specialty ? "bg-amber-500" : accent.bg}`} />
-          <span className={`text-xs font-bold uppercase tracking-wider ${agent.specialty ? "text-amber-400" : accent.text}`}>
-            {agent.specialty
-              ? `${SPECIALTY_EMOJI[agent.specialty]} ${SPECIALTY_LABELS[agent.specialty]}`
-              : MODEL_LABELS[agent.model]}
+          <div
+            className={`w-2 h-2 rounded-full ${
+              agent.customSpecialist
+                ? "bg-fuchsia-500"
+                : agent.specialty
+                  ? "bg-amber-500"
+                  : accent.bg
+            }`}
+          />
+          <span
+            className={`text-xs font-bold uppercase tracking-wider ${
+              agent.customSpecialist
+                ? "text-fuchsia-300"
+                : agent.specialty
+                  ? "text-amber-400"
+                  : accent.text
+            }`}
+          >
+            {agent.customSpecialist
+              ? `${agent.customSpecialist.emoji} ${agent.customSpecialist.name || "self-naming..."}`
+              : agent.specialty
+                ? `${SPECIALTY_EMOJI[agent.specialty]} ${SPECIALTY_LABELS[agent.specialty]}`
+                : MODEL_LABELS[agent.model]}
           </span>
         </div>
         <button
@@ -50,6 +68,20 @@ export default function DetailPanel({ agent, onClose }: DetailPanelProps) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {agent.customSpecialist && (
+          <div className="bg-gradient-to-br from-fuchsia-950/60 to-pink-950/60 border border-fuchsia-500/30 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">{agent.customSpecialist.emoji}</span>
+              <span className="text-fuchsia-200 font-bold text-sm">
+                {agent.customSpecialist.name || "(picking a name...)"}
+              </span>
+            </div>
+            <div className="text-fuchsia-100/80 text-xs italic leading-relaxed">
+              {agent.customSpecialist.role}
+            </div>
+          </div>
+        )}
+
         {/* Agent name + status */}
         <div className="flex items-start justify-between gap-2">
           <div className="text-white font-semibold text-lg leading-tight">

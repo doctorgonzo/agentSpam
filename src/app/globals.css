@@ -132,6 +132,16 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
+@keyframes spawn-burst-fuchsia {
+  0% { box-shadow: 0 0 0 0 rgba(217, 70, 239, 0.8); }
+  50% { box-shadow: 0 0 28px 12px rgba(217, 70, 239, 0.4); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 70, 239, 0); }
+}
+
+.animate-spawn-burst-fuchsia {
+  animation: spawn-burst-fuchsia 0.8s ease-out;
+}
+
 /* Done flash */
 @keyframes done-flash {
   0% { filter: brightness(1); }

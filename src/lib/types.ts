@@ -2,6 +2,12 @@ export type ModelTier = "opus" | "sonnet" | "haiku";
 
 export type Specialty = "researcher" | "calculator" | "critic";
 
+export interface CustomSpecialist {
+  name?: string; // agent picks this for itself
+  emoji: string;
+  role: string;
+}
+
 export interface AgentNode {
   id: string;
   parentId: string | null;
@@ -12,6 +18,7 @@ export interface AgentNode {
   status: "spawning" | "thinking" | "complete" | "error";
   result?: string;
   specialty?: Specialty;
+  customSpecialist?: CustomSpecialist;
 }
 
 export const SPECIALTY_LABELS: Record<Specialty, string> = {
@@ -32,6 +39,7 @@ export type AgentEvent =
   | { type: "agent_spawned"; agent: AgentNode }
   | { type: "agent_thinking"; id: string }
   | { type: "agent_complete"; id: string; result: string }
+  | { type: "agent_named"; id: string; name: string }
   | { type: "agent_error"; id: string; error: string }
   | { type: "cost_update"; totalCost: number; humanMinutes: number }
   | { type: "final_result"; result: string }
@@ -53,6 +61,7 @@ export interface FileAttachment {
 export interface SpawnRequest {
   prompt: string;
   file?: FileAttachment;
+  mode?: MissionMode;
 }
 
 export const MODEL_IDS: Record<ModelTier, string> = {
@@ -69,3 +78,69 @@ export const MODEL_LABELS: Record<ModelTier, string> = {
 
 export const MAX_DEPTH = 3;
 export const MAX_AGENTS = 30;
+
+export type MissionMode =
+  | "generalist"
+  | "market"
+  | "engineering"
+  | "legal"
+  | "support"
+  | "recruiter";
+
+export interface MissionModeConfig {
+  id: MissionMode;
+  label: string;
+  emoji: string;
+  description: string;
+  brainAddendum: string;
+}
+
+export const MISSION_MODES: MissionModeConfig[] = [
+  {
+    id: "generalist",
+    label: "Generalist",
+    emoji: "\u{1F9E0}",
+    description: "No vertical bias",
+    brainAddendum: "",
+  },
+  {
+    id: "market",
+    label: "Market Analyst",
+    emoji: "\u{1F4C8}",
+    description: "Financial / business analysis",
+    brainAddendum:
+      "DOMAIN: Market analysis. Frame subtasks around market dynamics, competitor positioning, financial impact, opportunity sizing. Strongly prefer a 'researcher' specialist for live pricing/news.",
+  },
+  {
+    id: "engineering",
+    label: "Engineering Lead",
+    emoji: "\u{2699}\u{FE0F}",
+    description: "Technical decomposition",
+    brainAddendum:
+      "DOMAIN: Engineering. Frame subtasks around architecture, implementation tradeoffs, scaling/risk concerns, dependencies, and migration steps. Strongly prefer a 'critic' to poke holes in the approach.",
+  },
+  {
+    id: "legal",
+    label: "Legal Reviewer",
+    emoji: "\u{2696}\u{FE0F}",
+    description: "Risk and compliance",
+    brainAddendum:
+      "DOMAIN: Legal/compliance review. Frame subtasks around regulatory exposure, contractual obligations, liability scenarios, and required disclosures. A 'critic' MUST be included to surface worst-case interpretations.",
+  },
+  {
+    id: "support",
+    label: "Support Director",
+    emoji: "\u{1F3A7}",
+    description: "Customer-facing comms",
+    brainAddendum:
+      "DOMAIN: Customer support leadership. Frame subtasks around customer sentiment, root-cause categories, response tone/messaging, escalation paths, and prevention. A 'critic' should challenge whether the response is empathetic enough.",
+  },
+  {
+    id: "recruiter",
+    label: "HR Recruiter",
+    emoji: "\u{1F454}",
+    description: "Candidate evaluation",
+    brainAddendum:
+      "DOMAIN: HR/recruiting. Frame subtasks around candidate skill match, experience depth, red flags, growth trajectory, and comparison-vs-bar. A 'critic' should call out bias, gaps, and unfounded assumptions in sibling evaluations.",
+  },
+];

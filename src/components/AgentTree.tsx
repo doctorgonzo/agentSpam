@@ -101,10 +101,14 @@ function AgentTreeInner({
           nodeId: agent.id,
           selected: selectedAgentId === agent.id,
           specialty: agent.specialty,
+          customSpecialist: agent.customSpecialist,
         },
       });
 
       if (agent.parentId) {
+        const edgeColor = agent.customSpecialist
+          ? "#d946ef"
+          : tierColors[agent.model] || "#666";
         rawEdges.push({
           id: `${agent.parentId}->${agent.id}`,
           source: agent.parentId,
@@ -112,8 +116,8 @@ function AgentTreeInner({
           animated: agent.status !== "complete",
           type: "smoothstep",
           style: {
-            stroke: tierColors[agent.model] || "#666",
-            strokeWidth: 2,
+            stroke: edgeColor,
+            strokeWidth: agent.customSpecialist ? 2.5 : 2,
           },
         });
       }
