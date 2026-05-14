@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { AgentNode, AgentEvent, FileAttachment } from "@/lib/types";
 import AgentTree from "@/components/AgentTree";
 import InputPanel from "@/components/InputPanel";
@@ -11,7 +11,7 @@ export default function Home() {
   const [agents, setAgents] = useState<Map<string, AgentNode>>(new Map());
   const [isRunning, setIsRunning] = useState(false);
   const [finalResult, setFinalResult] = useState<string | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState<AgentNode | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const agentsRef = useRef<Map<string, AgentNode>>(new Map());
 
   const updateAgent = useCallback(
@@ -26,19 +26,32 @@ export default function Home() {
     [],
   );
 
-  const handleSelectAgent = useCallback(
-    (id: string) => {
-      const agent = agentsRef.current.get(id);
-      setSelectedAgent(agent || null);
-    },
-    [],
-  );
+  const handleSelectAgent = useCallback((id: string) => {
+    setSelectedAgentId((prev) => (prev === id || !id ? null : id));
+  }, []);
+
+  const selectedAgent = useMemo(() => {
+    if (!selectedAgentId) return null;
+    return agents.get(selectedAgentId) ?? null;
+  }, [agents, selectedAgentId]);
+
+  const stats = useMemo(() => {
+    let active = 0;
+    let done = 0;
+    let errors = 0;
+    agents.forEach((a) => {
+      if (a.status === "thinking" || a.status === "spawning") active++;
+      else if (a.status === "complete") done++;
+      else if (a.status === "error") errors++;
+    });
+    return { total: agents.size, active, done, errors };
+  }, [agents]);
 
   const handleSubmit = useCallback(
     async (prompt: string, file?: FileAttachment) => {
       setIsRunning(true);
       setFinalResult(null);
-      setSelectedAgent(null);
+      setSelectedAgentId(null);
       agentsRef.current = new Map();
       setAgents(new Map());
 
@@ -120,8 +133,8 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden">
       {/* Header */}
-      <header className="flex-none px-6 py-4 border-b border-white/5">
-        <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
+      <header className="flex-none px-6 py-3 border-b border-white/5">
+        <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold tracking-tight">
               <span className="text-purple-400">agent</span>
@@ -131,24 +144,39 @@ export default function Home() {
               one brain, infinite idiots
             </span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-white/30">
+          <div className="flex items-center gap-3 text-xs">
             {hasAgents && (
               <>
-                <span>
-                  <span className="inline-block w-2 h-2 rounded-full bg-purple-400 mr-1" />
-                  Brain
-                </span>
-                <span>
-                  <span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />
-                  Mid
-                </span>
-                <span>
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1" />
-                  Intern
-                </span>
-                <span className="text-white/20 ml-2">
-                  {agents.size} agents
-                </span>
+                <div className="flex items-center gap-3 text-white/30">
+                  <span>
+                    <span className="inline-block w-2 h-2 rounded-full bg-purple-400 mr-1" />
+                    Brain
+                  </span>
+                  <span>
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />
+                    Mid
+                  </span>
+                  <span>
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1" />
+                    Intern
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-white/10" />
+                <div className="flex items-center gap-2 text-white/40 font-mono">
+                  {stats.active > 0 && (
+                    <span className="text-yellow-400">
+                      {stats.active} active
+                    </span>
+                  )}
+                  <span className="text-emerald-400/70">
+                    {stats.done} done
+                  </span>
+                  {stats.errors > 0 && (
+                    <span className="text-red-400/70">
+                      {stats.errors} err
+                    </span>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -182,10 +210,19 @@ export default function Home() {
               <AgentTree
                 agents={agents}
                 onSelectAgent={handleSelectAgent}
+                selectedAgentId={selectedAgentId}
               />
+
+              {/* Hint overlay */}
+              {!selectedAgentId && !isRunning && stats.done > 0 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/20 text-xs bg-zinc-900/80 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/5 pointer-events-none animate-fade-in">
+                  click any agent to inspect
+                </div>
+              )}
+
               <DetailPanel
                 agent={selectedAgent}
-                onClose={() => setSelectedAgent(null)}
+                onClose={() => setSelectedAgentId(null)}
               />
             </div>
 

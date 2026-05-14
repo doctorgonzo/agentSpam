@@ -5,6 +5,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
+  Controls,
   Node,
   Edge,
   useNodesState,
@@ -19,7 +20,7 @@ import AgentNodeComponent from "./AgentNode";
 import { AgentNode as AgentNodeType } from "@/lib/types";
 
 const NODE_WIDTH = 260;
-const NODE_HEIGHT = 140;
+const NODE_HEIGHT = 150;
 
 function layoutTree(
   nodes: Node[],
@@ -27,7 +28,7 @@ function layoutTree(
 ): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", ranksep: 80, nodesep: 40 });
+  g.setGraph({ rankdir: "TB", ranksep: 100, nodesep: 30 });
 
   nodes.forEach((node) => {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
@@ -58,13 +59,19 @@ const nodeTypes = { agent: AgentNodeComponent };
 interface AgentTreeInnerProps {
   agents: Map<string, AgentNodeType>;
   onSelectAgent?: (id: string) => void;
+  selectedAgentId?: string | null;
 }
 
-function AgentTreeInner({ agents, onSelectAgent }: AgentTreeInnerProps) {
+function AgentTreeInner({
+  agents,
+  onSelectAgent,
+  selectedAgentId,
+}: AgentTreeInnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { fitView } = useReactFlow();
   const fitViewTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const prevNodeCount = useRef(0);
 
   const tierColors: Record<string, string> = useMemo(
     () => ({
@@ -92,6 +99,7 @@ function AgentTreeInner({ agents, onSelectAgent }: AgentTreeInnerProps) {
           result: agent.result,
           onSelect: onSelectAgent,
           nodeId: agent.id,
+          selected: selectedAgentId === agent.id,
         },
       });
 
@@ -101,6 +109,7 @@ function AgentTreeInner({ agents, onSelectAgent }: AgentTreeInnerProps) {
           source: agent.parentId,
           target: agent.id,
           animated: agent.status !== "complete",
+          type: "smoothstep",
           style: {
             stroke: tierColors[agent.model] || "#666",
             strokeWidth: 2,
@@ -118,11 +127,16 @@ function AgentTreeInner({ agents, onSelectAgent }: AgentTreeInnerProps) {
     setNodes(laidOut);
     setEdges(laidOutEdges);
 
-    if (fitViewTimer.current) clearTimeout(fitViewTimer.current);
-    fitViewTimer.current = setTimeout(() => {
-      fitView({ padding: 0.3, duration: 300 });
-    }, 50);
-  }, [agents, setNodes, setEdges, tierColors, fitView, onSelectAgent]);
+    const nodeCountChanged = rawNodes.length !== prevNodeCount.current;
+    prevNodeCount.current = rawNodes.length;
+
+    if (nodeCountChanged) {
+      if (fitViewTimer.current) clearTimeout(fitViewTimer.current);
+      fitViewTimer.current = setTimeout(() => {
+        fitView({ padding: 0.2, duration: 400 });
+      }, 100);
+    }
+  }, [agents, setNodes, setEdges, tierColors, fitView, onSelectAgent, selectedAgentId]);
 
   useEffect(() => {
     updateLayout();
@@ -137,18 +151,23 @@ function AgentTreeInner({ agents, onSelectAgent }: AgentTreeInnerProps) {
       nodeTypes={nodeTypes}
       connectionLineType={ConnectionLineType.SmoothStep}
       fitView
-      fitViewOptions={{ padding: 0.3 }}
+      fitViewOptions={{ padding: 0.2 }}
       proOptions={{ hideAttribution: true }}
       nodesDraggable={false}
       nodesConnectable={false}
-      minZoom={0.2}
+      minZoom={0.1}
       maxZoom={1.5}
+      onPaneClick={() => onSelectAgent?.("")}
     >
       <Background
         variant={BackgroundVariant.Dots}
         gap={20}
         size={1}
         color="#333"
+      />
+      <Controls
+        showInteractive={false}
+        className="!bg-zinc-800/80 !border-white/10 !rounded-lg !shadow-xl"
       />
     </ReactFlow>
   );
@@ -157,13 +176,22 @@ function AgentTreeInner({ agents, onSelectAgent }: AgentTreeInnerProps) {
 interface AgentTreeProps {
   agents: Map<string, AgentNodeType>;
   onSelectAgent?: (id: string) => void;
+  selectedAgentId?: string | null;
 }
 
-export default function AgentTree({ agents, onSelectAgent }: AgentTreeProps) {
+export default function AgentTree({
+  agents,
+  onSelectAgent,
+  selectedAgentId,
+}: AgentTreeProps) {
   return (
     <div className="w-full h-full">
       <ReactFlowProvider>
-        <AgentTreeInner agents={agents} onSelectAgent={onSelectAgent} />
+        <AgentTreeInner
+          agents={agents}
+          onSelectAgent={onSelectAgent}
+          selectedAgentId={selectedAgentId}
+        />
       </ReactFlowProvider>
     </div>
   );

@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { AgentNode, MODEL_LABELS, ModelTier } from "@/lib/types";
 
-const tierColors: Record<ModelTier, string> = {
-  opus: "text-purple-400 border-purple-500/30",
-  sonnet: "text-blue-400 border-blue-500/30",
-  haiku: "text-emerald-400 border-emerald-500/30",
+const tierAccent: Record<ModelTier, { text: string; bg: string }> = {
+  opus: { text: "text-purple-400", bg: "bg-purple-500" },
+  sonnet: { text: "text-blue-400", bg: "bg-blue-500" },
+  haiku: { text: "text-emerald-400", bg: "bg-emerald-500" },
 };
 
 interface DetailPanelProps {
@@ -14,44 +16,44 @@ interface DetailPanelProps {
 }
 
 export default function DetailPanel({ agent, onClose }: DetailPanelProps) {
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
   if (!agent) return null;
 
-  const color = tierColors[agent.model];
+  const accent = tierAccent[agent.model];
 
   return (
-    <div className="absolute right-0 top-0 h-full w-80 bg-zinc-900/95 backdrop-blur-md border-l border-white/10 z-50 flex flex-col animate-slide-in">
-      <div className="flex items-center justify-between p-4 border-b border-white/10">
+    <div className="absolute right-0 top-0 h-full w-[340px] bg-zinc-900/95 backdrop-blur-md border-l border-white/10 z-50 flex flex-col animate-slide-in">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <span
-            className={`text-xs font-bold uppercase tracking-wider ${color}`}
-          >
+          <div className={`w-2 h-2 rounded-full ${accent.bg}`} />
+          <span className={`text-xs font-bold uppercase tracking-wider ${accent.text}`}>
             {MODEL_LABELS[agent.model]}
           </span>
-          <span className="text-white/30 text-xs">#{agent.id}</span>
         </div>
         <button
           onClick={onClose}
-          className="text-white/30 hover:text-white text-sm transition-colors"
+          className="text-white/30 hover:text-white text-xs bg-white/5 hover:bg-white/10 px-2 py-1 rounded transition-all"
         >
-          esc
+          ESC
         </button>
       </div>
 
+      {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Agent name */}
-        <div>
-          <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">
-            Agent
+        {/* Agent name + status */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-white font-semibold text-lg leading-tight">
+            {agent.label}
           </div>
-          <div className="text-white font-semibold">{agent.label}</div>
-        </div>
-
-        {/* Status */}
-        <div>
-          <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">
-            Status
-          </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-none mt-1">
             <div
               className={`w-2 h-2 rounded-full ${
                 agent.status === "complete"
@@ -61,56 +63,49 @@ export default function DetailPanel({ agent, onClose }: DetailPanelProps) {
                     : "bg-yellow-400 animate-pulse"
               }`}
             />
-            <span className="text-white/80 text-sm capitalize">
+            <span className="text-white/50 text-xs capitalize">
               {agent.status}
             </span>
           </div>
         </div>
 
-        {/* Assigned task */}
-        <div>
-          <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">
-            Assigned Task
-          </div>
-          <div className="text-white/70 text-sm leading-relaxed bg-white/5 rounded-lg p-3">
-            {agent.task}
-          </div>
+        {/* Depth indicator */}
+        <div className="flex items-center gap-1.5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 rounded-full transition-all ${
+                i <= agent.depth
+                  ? `${accent.bg} w-6`
+                  : "bg-white/10 w-4"
+              }`}
+            />
+          ))}
+          <span className="text-white/30 text-[10px] ml-1">
+            depth {agent.depth}
+          </span>
         </div>
 
-        {/* Depth */}
+        {/* Assigned task */}
         <div>
-          <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">
-            Depth
+          <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1.5 font-medium">
+            Assigned Task
           </div>
-          <div className="flex items-center gap-1">
-            {Array.from({ length: agent.depth + 1 }).map((_, i) => (
-              <div
-                key={i}
-                className={`w-3 h-3 rounded-sm ${
-                  i <= agent.depth
-                    ? agent.model === "opus"
-                      ? "bg-purple-500"
-                      : agent.model === "sonnet"
-                        ? "bg-blue-500"
-                        : "bg-emerald-500"
-                    : "bg-white/10"
-                }`}
-              />
-            ))}
-            <span className="text-white/40 text-xs ml-2">
-              Level {agent.depth}
-            </span>
+          <div className="text-white/70 text-sm leading-relaxed bg-white/5 rounded-lg p-3 border border-white/5">
+            {agent.task}
           </div>
         </div>
 
         {/* Result */}
         {agent.result && (
           <div>
-            <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">
+            <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1.5 font-medium">
               Output
             </div>
-            <div className="text-white/80 text-sm leading-relaxed bg-white/5 rounded-lg p-3 max-h-[300px] overflow-y-auto">
-              {agent.result}
+            <div className="bg-white/5 rounded-lg p-3 border border-white/5 max-h-[50vh] overflow-y-auto">
+              <div className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-strong:text-white/90 prose-p:text-white/70 prose-li:text-white/70 prose-code:text-purple-300 prose-hr:border-white/10">
+                <ReactMarkdown>{agent.result}</ReactMarkdown>
+              </div>
             </div>
           </div>
         )}
