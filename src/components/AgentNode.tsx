@@ -1,11 +1,11 @@
 "use client";
 
 import { Handle, Position } from "@xyflow/react";
-import { ModelTier } from "@/lib/types";
+import { ModelTier, Specialty, SPECIALTY_EMOJI, SPECIALTY_LABELS } from "@/lib/types";
 
 const tierStyles: Record<
   ModelTier,
-  { bg: string; border: string; glow: string; badge: string; ring: string }
+  { bg: string; border: string; glow: string; badge: string; ring: string; glowColor: string }
 > = {
   opus: {
     bg: "bg-purple-950/80",
@@ -13,6 +13,7 @@ const tierStyles: Record<
     glow: "shadow-purple-500/50",
     badge: "bg-purple-500",
     ring: "ring-purple-400",
+    glowColor: "#a855f7",
   },
   sonnet: {
     bg: "bg-blue-950/80",
@@ -20,6 +21,7 @@ const tierStyles: Record<
     glow: "shadow-blue-500/50",
     badge: "bg-blue-500",
     ring: "ring-blue-400",
+    glowColor: "#3b82f6",
   },
   haiku: {
     bg: "bg-emerald-950/80",
@@ -27,6 +29,7 @@ const tierStyles: Record<
     glow: "shadow-emerald-500/50",
     badge: "bg-emerald-500",
     ring: "ring-emerald-400",
+    glowColor: "#10b981",
   },
 };
 
@@ -45,6 +48,7 @@ interface AgentNodeData {
   onSelect?: (id: string) => void;
   nodeId?: string;
   selected?: boolean;
+  specialty?: Specialty;
 }
 
 export default function AgentNodeComponent({
@@ -58,6 +62,12 @@ export default function AgentNodeComponent({
   const isError = data.status === "error";
   const isSelected = data.selected;
 
+  const burstClass: Record<string, string> = {
+    opus: "animate-spawn-burst",
+    sonnet: "animate-spawn-burst-blue",
+    haiku: "animate-spawn-burst-green",
+  };
+
   return (
     <div
       onClick={(e) => {
@@ -69,12 +79,13 @@ export default function AgentNodeComponent({
         backdrop-blur-sm transition-all duration-300 cursor-pointer
         hover:brightness-125 hover:scale-[1.02]
         ${style.bg} ${style.border}
-        ${isActive ? `shadow-lg ${style.glow} animate-pulse` : ""}
-        ${isDone ? "shadow-md" : ""}
+        ${isActive ? `shadow-lg ${style.glow} animate-ambient-glow` : ""}
+        ${isDone ? "shadow-md animate-done-flash" : ""}
         ${isError ? "border-red-500 shadow-red-500/30" : ""}
-        ${data.status === "spawning" ? "scale-90 opacity-0 animate-pop-in" : ""}
+        ${data.status === "spawning" ? `scale-90 opacity-0 animate-pop-in ${burstClass[data.model]}` : ""}
         ${isSelected ? `ring-2 ring-offset-2 ring-offset-zinc-950 ${style.ring} brightness-125` : ""}
       `}
+      style={isActive ? { color: style.glowColor } : undefined}
     >
       <Handle
         type="target"
@@ -83,11 +94,13 @@ export default function AgentNodeComponent({
       />
 
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm">{tierEmoji[data.model]}</span>
+        <span className="text-sm">
+          {data.specialty ? SPECIALTY_EMOJI[data.specialty] : tierEmoji[data.model]}
+        </span>
         <span
-          className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${style.badge} text-white`}
+          className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${data.specialty ? "bg-amber-500" : style.badge} text-white`}
         >
-          {data.model}
+          {data.specialty ? data.specialty : data.model}
         </span>
         {isDone && (
           <span className="text-emerald-400 text-xs ml-auto flex items-center gap-1">

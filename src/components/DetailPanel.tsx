@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import { AgentNode, MODEL_LABELS, ModelTier } from "@/lib/types";
+import { AgentNode, MODEL_LABELS, ModelTier, SPECIALTY_LABELS, SPECIALTY_EMOJI } from "@/lib/types";
 
 const tierAccent: Record<ModelTier, { text: string; bg: string }> = {
   opus: { text: "text-purple-400", bg: "bg-purple-500" },
@@ -33,9 +33,11 @@ export default function DetailPanel({ agent, onClose }: DetailPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${accent.bg}`} />
-          <span className={`text-xs font-bold uppercase tracking-wider ${accent.text}`}>
-            {MODEL_LABELS[agent.model]}
+          <div className={`w-2 h-2 rounded-full ${agent.specialty ? "bg-amber-500" : accent.bg}`} />
+          <span className={`text-xs font-bold uppercase tracking-wider ${agent.specialty ? "text-amber-400" : accent.text}`}>
+            {agent.specialty
+              ? `${SPECIALTY_EMOJI[agent.specialty]} ${SPECIALTY_LABELS[agent.specialty]}`
+              : MODEL_LABELS[agent.model]}
           </span>
         </div>
         <button

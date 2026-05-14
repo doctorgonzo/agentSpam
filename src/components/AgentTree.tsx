@@ -100,6 +100,7 @@ function AgentTreeInner({
           onSelect: onSelectAgent,
           nodeId: agent.id,
           selected: selectedAgentId === agent.id,
+          specialty: agent.specialty,
         },
       });
 

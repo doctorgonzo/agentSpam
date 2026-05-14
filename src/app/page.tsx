@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentNode, AgentEvent, FileAttachment } from "@/lib/types";
+import { spawnSound, thinkingSound, completeSound, errorSound, synthesisSound } from "@/lib/sounds";
 import AgentTree from "@/components/AgentTree";
 import InputPanel from "@/components/InputPanel";
 import ResultPanel from "@/components/ResultPanel";
@@ -13,6 +14,14 @@ export default function Home() {
   const [finalResult, setFinalResult] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [scoutStatus, setScoutStatus] = useState<"idle" | "searching" | "found" | "none">("idle");
+  const [scoutFindings, setScoutFindings] = useState<string | null>(null);
+  const [scoutElapsedMs, setScoutElapsedMs] = useState(0);
+  const scoutStartRef = useRef<number | null>(null);
+  const [totalCost, setTotalCost] = useState(0);
+  const [humanMinutes, setHumanMinutes] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
   const agentsRef = useRef<Map<string, AgentNode>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -49,6 +58,19 @@ export default function Home() {
     return { total: agents.size, active, done, errors };
   }, [agents]);
 
+  useEffect(() => {
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      if (startTimeRef.current) {
+        setElapsedMs(Date.now() - startTimeRef.current);
+      }
+      if (scoutStartRef.current && scoutStatus === "searching") {
+        setScoutElapsedMs(Date.now() - scoutStartRef.current);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isRunning, scoutStatus]);
+
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -64,6 +86,14 @@ export default function Home() {
       setIsRunning(true);
       setFinalResult(null);
       setSelectedAgentId(null);
+      setScoutStatus("idle");
+      setScoutFindings(null);
+      setScoutElapsedMs(0);
+      scoutStartRef.current = null;
+      setTotalCost(0);
+      setHumanMinutes(0);
+      setElapsedMs(0);
+      startTimeRef.current = Date.now();
       agentsRef.current = new Map();
       setAgents(new Map());
 
@@ -98,14 +128,35 @@ export default function Home() {
               const event: AgentEvent = JSON.parse(json);
 
               switch (event.type) {
+                case "scout_searching":
+                  setScoutStatus("searching");
+                  scoutStartRef.current = Date.now();
+                  setScoutElapsedMs(0);
+                  break;
+
+                case "scout_complete":
+                  setScoutStatus(event.findings ? "found" : "none");
+                  setScoutFindings(event.findings);
+                  if (scoutStartRef.current) {
+                    setScoutElapsedMs(Date.now() - scoutStartRef.current);
+                  }
+                  break;
+
+                case "cost_update":
+                  setTotalCost(event.totalCost);
+                  setHumanMinutes(event.humanMinutes);
+                  break;
+
                 case "agent_spawned":
                   agentsRef.current = new Map(agentsRef.current);
                   agentsRef.current.set(event.agent.id, event.agent);
                   setAgents(new Map(agentsRef.current));
+                  spawnSound();
                   break;
 
                 case "agent_thinking":
                   updateAgent(event.id, { status: "thinking" });
+                  thinkingSound();
                   break;
 
                 case "agent_complete":
@@ -113,15 +164,18 @@ export default function Home() {
                     status: "complete",
                     result: event.result,
                   });
+                  completeSound();
                   break;
 
                 case "agent_error":
                   updateAgent(event.id, { status: "error" });
+                  errorSound();
                   break;
 
                 case "final_result":
                   setFinalResult(event.result);
                   setShowResult(true);
+                  synthesisSound();
                   break;
 
                 case "done":
@@ -159,6 +213,69 @@ export default function Home() {
             </span>
           </div>
           <div className="flex items-center gap-3 text-xs">
+            {(isRunning || totalCost > 0) && (
+              <div
+                title="Estimated cost vs. equivalent human work time"
+                className="flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 text-[11px] font-mono"
+              >
+                <span>${totalCost.toFixed(4)}</span>
+                <span className="text-white/20">·</span>
+                <span>{(elapsedMs / 1000).toFixed(1)}s</span>
+                {humanMinutes > 0 && (
+                  <>
+                    <span className="text-white/20">·</span>
+                    <span className="text-emerald-200">
+                      saves ~{humanMinutes}min
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+            {scoutStatus !== "idle" && (
+              <div
+                title={scoutFindings || (scoutStatus === "none" ? "No live data needed" : "Scout searching...")}
+                className={`
+                  relative overflow-hidden flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] min-w-[200px]
+                  ${scoutStatus === "searching" ? "border-cyan-500/40 bg-cyan-500/5 text-cyan-300" : ""}
+                  ${scoutStatus === "found" ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300" : ""}
+                  ${scoutStatus === "none" ? "border-white/10 bg-white/5 text-white/40" : ""}
+                `}
+              >
+                {scoutStatus === "searching" && (
+                  <div
+                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-500/30 to-cyan-400/40 transition-all duration-100 ease-out"
+                    style={{
+                      width: `${Math.min(95, (1 - Math.exp(-scoutElapsedMs / 12000)) * 100)}%`,
+                    }}
+                  />
+                )}
+                {scoutStatus === "found" && (
+                  <div className="absolute inset-0 bg-cyan-500/15" />
+                )}
+                <svg className="w-3 h-3 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <div className="flex items-center gap-1.5 relative z-10 flex-1 justify-between">
+                  {scoutStatus === "searching" && (
+                    <>
+                      <span>Scout searching</span>
+                      <span className="font-mono text-cyan-400/80">
+                        {(scoutElapsedMs / 1000).toFixed(1)}s
+                      </span>
+                    </>
+                  )}
+                  {scoutStatus === "found" && (
+                    <>
+                      <span>Scout found data</span>
+                      <span className="font-mono text-cyan-400/60">
+                        {(scoutElapsedMs / 1000).toFixed(1)}s
+                      </span>
+                    </>
+                  )}
+                  {scoutStatus === "none" && <span>No live data needed</span>}
+                </div>
+              </div>
+            )}
             {hasAgents && (
               <>
                 <div className="flex items-center gap-3 text-white/30">
