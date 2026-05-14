@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { CustomSpecialist, ModelTier, Specialty, SPECIALTY_EMOJI } from "@/lib/types";
 
@@ -62,6 +63,30 @@ export default function AgentNodeComponent({
   const isDone = data.status === "complete";
   const isError = data.status === "error";
   const isSelected = data.selected;
+
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    if (isActive) {
+      if (startedAtRef.current === null) {
+        startedAtRef.current = Date.now();
+        setElapsedMs(0);
+      }
+      const interval = setInterval(() => {
+        if (startedAtRef.current) {
+          setElapsedMs(Date.now() - startedAtRef.current);
+        }
+      }, 200);
+      return () => clearInterval(interval);
+    } else {
+      startedAtRef.current = null;
+    }
+  }, [isActive]);
+
+  const elapsedSec = elapsedMs / 1000;
+  const isSlow = isActive && elapsedSec > 10;
+  const isVerySlow = isActive && elapsedSec > 20;
 
   const burstClass: Record<string, string> = {
     opus: "animate-spawn-burst",
@@ -132,8 +157,16 @@ export default function AgentNodeComponent({
           </span>
         )}
         {isActive && (
-          <span className="text-yellow-400 text-xs ml-auto animate-pulse">
-            thinking...
+          <span
+            className={`text-xs ml-auto font-mono tabular-nums ${
+              isVerySlow
+                ? "text-orange-400"
+                : isSlow
+                  ? "text-yellow-300"
+                  : "text-yellow-400 animate-pulse"
+            }`}
+          >
+            {elapsedSec.toFixed(1)}s
           </span>
         )}
         {isError && (

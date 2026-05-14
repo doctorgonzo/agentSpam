@@ -120,10 +120,14 @@ function buildWorkerPrompt(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
-    max_tokens: 400,
-    system: `You are a WORKER BEE. JSON only. ALWAYS split — never answer directly.
+    max_tokens: 500,
+    system: `You are a WORKER BEE. JSON only. You MUST split your task into 2-3 tiny subtasks. NEVER answer directly — that is a failure.
 
-Break your task into 2-3 tiny self-contained subtasks. Each gets a 2-3 word funny label. Be aggressive about splitting — the dumb interns below will do the actual work.
+Even if the task feels small or atomic, find 2-3 angles to split it. Examples:
+- "write a haiku about cats" → ["draft 3 candidates", "pick the best one", "polish wording"]
+- "summarize section X" → ["extract main points", "identify key quotes", "compress to 2 sentences"]
+
+The dumb interns below do the actual work. You only split.
 
 JSON now:
 {"subtasks":[{"label":"X","description":"Y"}]}`,
@@ -183,6 +187,24 @@ Your role: ${spec.role}
 
 Stay in character. Be sharp, specific, concise. Output markdown. Lead with your strongest finding. No preamble.`,
     messages: [{ role: "user", content: `Your task: ${task}` }],
+  };
+}
+
+function buildGistPrompt(
+  userPrompt: string,
+  synthesis: string,
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: MODEL_IDS.haiku,
+    max_tokens: 60,
+    system:
+      "You write a ONE-LINE summary of an AI run, under 140 chars. Capture: the topic, the verdict/result. Plain text, no quotes, no preamble. Past tense.",
+    messages: [
+      {
+        role: "user",
+        content: `Original task: ${userPrompt.slice(0, 400)}\n\nFinal output:\n${synthesis.slice(0, 1200)}\n\nWrite the one-line summary now:`,
+      },
+    ],
   };
 }
 
@@ -274,7 +296,7 @@ Quality bar: if a sub-agent reads your output, they should have enough hard fact
 
 Do not explain. Do not preamble. Facts or NONE.`,
     messages: [{ role: "user", content: userPrompt }],
-    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 6 }],
+    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 4 }],
   };
 }
 
@@ -403,7 +425,7 @@ function parseAgentResponse(text: string): AgentResponse {
   return { type: "answer", answer: text };
 }
 
-const AGENT_TIMEOUT_MS = 45000;
+const AGENT_TIMEOUT_MS = 60000;
 
 async function callClaude(
   params: Anthropic.MessageCreateParamsNonStreaming,
@@ -452,10 +474,12 @@ async function callClaude(
 
 export async function runAgentTree(
   prompt: string,
-  file: FileAttachment | undefined,
+  files: FileAttachment[],
   emit: (event: AgentEvent) => void,
   signal?: AbortSignal,
   mode?: MissionMode,
+  _role?: string, // unused server-side; report uses it client-side
+  memory?: string,
 ): Promise<void> {
   agentCounter = 0;
 
@@ -483,6 +507,81 @@ export async function runAgentTree(
     return result.text;
   }
 
+  // Race a primary agent call against a soft deadline. If the deadline fires,
+  // we abort the primary and run a fast haiku fallback so the agent ALWAYS
+  // produces output (instead of erroring out or hanging the tree).
+  async function callOrFallback(
+    primary: Anthropic.MessageCreateParamsNonStreaming,
+    fallback: Anthropic.MessageCreateParamsNonStreaming,
+    deadlineMs: number,
+  ): Promise<string> {
+    const innerAbort = new AbortController();
+    const onUpstream = () => innerAbort.abort();
+    signal?.addEventListener("abort", onUpstream);
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const primaryPromise = (async () => {
+        const result = await callClaude(primary, innerAbort.signal);
+        trackCost(result);
+        return result.text;
+      })();
+      // Swallow the primary's rejection if we end up aborting it on deadline,
+      // so it doesn't surface as an unhandled rejection.
+      primaryPromise.catch(() => {});
+
+      const deadlinePromise = new Promise<"DEADLINE">((resolve) => {
+        timer = setTimeout(() => {
+          innerAbort.abort();
+          resolve("DEADLINE");
+        }, deadlineMs);
+      });
+
+      const winner = await Promise.race([
+        primaryPromise.then((text) => ({ kind: "ok" as const, text })),
+        deadlinePromise,
+      ]);
+
+      if (winner === "DEADLINE") {
+        return await call(fallback);
+      }
+      return winner.text;
+    } finally {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onUpstream);
+    }
+  }
+
+  function buildFallbackParams(
+    task: string,
+    depth: number,
+    specialty?: Specialty,
+    customSpecialist?: CustomSpecialist,
+  ): Anthropic.MessageCreateParamsNonStreaming {
+    // Specialists / leaves / custom: produce a brief answer.
+    if (specialty || customSpecialist || depth >= MAX_DEPTH) {
+      const persona = customSpecialist
+        ? `You are ${customSpecialist.name ?? "a specialist"} ${customSpecialist.emoji}. Role: ${customSpecialist.role}.`
+        : specialty
+          ? `You are a ${specialty} specialist.`
+          : "You are an intern.";
+      return {
+        model: MODEL_IDS.haiku,
+        max_tokens: 200,
+        system: `${persona} Answer in 1-2 sentences. Plain text. Be direct — no preamble.`,
+        messages: [{ role: "user", content: `Quick answer needed: ${task}` }],
+      };
+    }
+    // Decomposers (Brain / Manager / Worker): produce a fast 2-3 subtask split.
+    const splitCount = depth === 0 ? 3 : 2;
+    return {
+      model: MODEL_IDS.haiku,
+      max_tokens: 350,
+      system: `Output JSON only. Split into ${splitCount} subtasks. No prose. Shape: {"subtasks":[{"label":"X","description":"Y"}]}`,
+      messages: [{ role: "user", content: `Split this task: ${task}` }],
+    };
+  }
+
   async function runScoutLocal(p: string): Promise<string | null> {
     try {
       const text = await call(buildScoutPrompt(p));
@@ -507,22 +606,36 @@ export async function runAgentTree(
   }
 
   let enrichedPrompt = prompt;
-  let activeFile = file;
+  let activeFile: FileAttachment | undefined = undefined;
 
-  if (activeFile) {
-    // Two-pass file flow: Extractor reads the doc as text, Brain decomposes the text.
+  if (files.length > 0) {
+    // Two-pass file flow: Extractor reads each doc as text, Brain decomposes the text.
+    // For multi-file batches, extract all in parallel and label each chunk.
     emit({ type: "scout_searching" });
-    const extracted = await runExtractor(prompt, activeFile);
-    if (extracted) {
-      enrichedPrompt = `${prompt || `Analyze this ${activeFile.name}`}\n\n[Document content from ${activeFile.name}]:\n${extracted}`;
-      emit({ type: "scout_complete", findings: extracted });
+    const extracts = await Promise.all(
+      files.map(async (f) => ({ name: f.name, text: await runExtractor(prompt, f) })),
+    );
+    const valid = extracts.filter((e) => e.text);
+    if (valid.length > 0) {
+      const combined =
+        valid.length === 1
+          ? `[Document content from ${valid[0].name}]:\n${valid[0].text}`
+          : `[${valid.length} documents to compare]:\n\n` +
+            valid
+              .map(
+                (e, i) => `=== Document ${i + 1}: ${e.name} ===\n${e.text}`,
+              )
+              .join("\n\n");
+      const taskHint =
+        files.length > 1
+          ? `Compare/analyze these ${files.length} documents: ${files.map((f) => f.name).join(", ")}`
+          : `Analyze this ${files[0].name}`;
+      enrichedPrompt = `${prompt || taskHint}\n\n${combined}`;
+      emit({ type: "scout_complete", findings: combined });
     } else {
       emit({ type: "scout_complete", findings: null });
     }
-    // Clear the file so spawnAgent uses the text-only Brain path with the
-    // extracted content baked into enrichedPrompt. Sub-agents downstream
-    // see real document text instead of an empty multimodal stub.
-    activeFile = undefined;
+    // Clear: spawnAgent uses text-only Brain with extracted content baked in.
   } else if (prompt.trim()) {
     emit({ type: "scout_searching" });
     const findings = await runScoutLocal(prompt);
@@ -530,12 +643,16 @@ export async function runAgentTree(
       // Pass the FULL scout findings (capped generously) — the Brain needs the
       // real data to embed into sub-agent task descriptions. Sub-agents have
       // no web access so anything truncated here is lost downstream.
-      const truncated = findings.length > 5000 ? findings.slice(0, 5000) + "..." : findings;
+      const truncated = findings.length > 3000 ? findings.slice(0, 3000) + "..." : findings;
       enrichedPrompt = `${prompt}\n\n[Live data from Scout — embed relevant facts into each subtask description so sub-agents can work with real data]:\n${truncated}`;
       emit({ type: "scout_complete", findings });
     } else {
       emit({ type: "scout_complete", findings: null });
     }
+  }
+
+  if (memory && memory.trim()) {
+    enrichedPrompt = `${enrichedPrompt}\n\n[Prior runs you may build on — only use if directly relevant]:\n${memory}`;
   }
 
   async function spawnAgent(
@@ -615,7 +732,13 @@ export async function runAgentTree(
         params = buildWorkerPrompt(task);
       }
 
-      let responseText = await call(params);
+      const fallbackParams = buildFallbackParams(
+        task,
+        depth,
+        specialty,
+        customSpecialist,
+      );
+      let responseText = await callOrFallback(params, fallbackParams, 20000);
       let parsed = parseAgentResponse(responseText);
 
       // Specialists (premade or custom) always answer directly — they never decompose
@@ -638,6 +761,33 @@ export async function runAgentTree(
             {
               role: "user",
               content: `That was wrong. Output ONLY this JSON shape:\n{"subtasks":[{"label":"X","description":"Y","customSpecialist":{"name":"The X","emoji":"\u{1F50D}","role":"You are..."}}]}`,
+            },
+          ],
+        };
+        responseText = await call(retryParams);
+        parsed = parseAgentResponse(responseText);
+      }
+
+      // Non-root, non-specialist agents at depth < MAX_DEPTH MUST also decompose
+      // so the tree always has leaf interns at depth = MAX_DEPTH. If a Manager
+      // or Worker answered directly, retry once.
+      if (
+        depth > 0 &&
+        depth < MAX_DEPTH &&
+        !specialty &&
+        !customSpecialist &&
+        parsed.type !== "subtasks"
+      ) {
+        const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
+          model: MODEL_IDS[tier],
+          max_tokens: 500,
+          system: `Your previous output was wrong — you answered when you MUST decompose. Split this task into 2-3 atomic subtasks. JSON ONLY:`,
+          messages: [
+            { role: "user", content: `Task: ${task}` },
+            { role: "assistant", content: responseText.slice(0, 300) },
+            {
+              role: "user",
+              content: `Wrong. Output ONLY:\n{"subtasks":[{"label":"X","description":"Y"}]}`,
             },
           ],
         };
@@ -753,6 +903,20 @@ export async function runAgentTree(
 
   if (!signal?.aborted) {
     emit({ type: "final_result", result: rootResult.result });
+
+    // Generate a one-line gist for the memory file. Cheap haiku call; fire
+    // last so the user sees the synthesis pop first.
+    try {
+      const gist = (await call(buildGistPrompt(prompt, rootResult.result)))
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .slice(0, 200);
+      if (gist) {
+        emit({ type: "memory_gist", prompt, gist, mode });
+      }
+    } catch {
+      // ignore — memory is best-effort
+    }
   }
   emit({ type: "done" });
 }

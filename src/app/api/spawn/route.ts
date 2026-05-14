@@ -5,9 +5,12 @@ export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const body: SpawnRequest = await req.json();
-  const { prompt, file, mode } = body;
+  const { prompt, file, files, mode, role, memory } = body;
 
-  if (!prompt && !file) {
+  // Normalize to a files array — legacy single `file` still works.
+  const allFiles = files && files.length > 0 ? files : file ? [file] : [];
+
+  if (!prompt && allFiles.length === 0) {
     return new Response(JSON.stringify({ error: "Need a prompt or file" }), {
       status: 400,
     });
@@ -36,7 +39,7 @@ export async function POST(req: Request) {
       };
 
       try {
-        await runAgentTree(prompt, file, emit, abort.signal, mode);
+        await runAgentTree(prompt, allFiles, emit, abort.signal, mode, role, memory);
       } catch (err) {
         if (!abort.signal.aborted) {
           const msg = err instanceof Error ? err.message : "Engine failed";

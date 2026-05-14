@@ -40,6 +40,7 @@ export type AgentEvent =
   | { type: "agent_thinking"; id: string }
   | { type: "agent_complete"; id: string; result: string }
   | { type: "agent_named"; id: string; name: string }
+  | { type: "memory_gist"; prompt: string; gist: string; mode?: string }
   | { type: "agent_error"; id: string; error: string }
   | { type: "cost_update"; totalCost: number; humanMinutes: number }
   | { type: "final_result"; result: string }
@@ -61,7 +62,10 @@ export interface FileAttachment {
 export interface SpawnRequest {
   prompt: string;
   file?: FileAttachment;
+  files?: FileAttachment[]; // for batch (multi-file) runs
   mode?: MissionMode;
+  role?: string; // worker role id for the headcount calculator
+  memory?: string; // pre-formatted memory block for the Brain
 }
 
 export const MODEL_IDS: Record<ModelTier, string> = {
@@ -94,6 +98,24 @@ export interface MissionModeConfig {
   description: string;
   brainAddendum: string;
 }
+
+export interface WorkerRole {
+  id: string;
+  label: string;
+  emoji: string;
+  hourlyRate: number; // USD, fully-loaded labor cost
+}
+
+export const WORKER_ROLES: WorkerRole[] = [
+  { id: "none", label: "No comparison", emoji: "\u{1F645}", hourlyRate: 0 },
+  { id: "analyst", label: "Business Analyst", emoji: "\u{1F4CA}", hourlyRate: 85 },
+  { id: "researcher", label: "Researcher", emoji: "\u{1F52C}", hourlyRate: 65 },
+  { id: "recruiter", label: "Recruiter", emoji: "\u{1F454}", hourlyRate: 75 },
+  { id: "engineer", label: "Senior Engineer", emoji: "\u{2699}\u{FE0F}", hourlyRate: 130 },
+  { id: "consultant", label: "Mgmt Consultant", emoji: "\u{1F4BC}", hourlyRate: 400 },
+  { id: "junior-lawyer", label: "Junior Lawyer", emoji: "\u{2696}\u{FE0F}", hourlyRate: 250 },
+  { id: "senior-lawyer", label: "Senior Lawyer", emoji: "\u{1F468}\u200D\u{2696}\u{FE0F}", hourlyRate: 650 },
+];
 
 export const MISSION_MODES: MissionModeConfig[] = [
   {
