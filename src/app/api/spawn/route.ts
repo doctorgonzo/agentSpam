@@ -15,6 +15,14 @@ export async function POST(req: Request) {
 
   const encoder = new TextEncoder();
 
+  const abort = new AbortController();
+
+  try {
+    req.signal.addEventListener("abort", () => abort.abort());
+  } catch {
+    // some runtimes don't support req.signal
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (event: AgentEvent) => {
@@ -28,10 +36,12 @@ export async function POST(req: Request) {
       };
 
       try {
-        await runAgentTree(prompt, file, emit);
+        await runAgentTree(prompt, file, emit, abort.signal);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Engine failed";
-        emit({ type: "agent_error", id: "root", error: msg });
+        if (!abort.signal.aborted) {
+          const msg = err instanceof Error ? err.message : "Engine failed";
+          emit({ type: "agent_error", id: "root", error: msg });
+        }
         emit({ type: "done" });
       }
 

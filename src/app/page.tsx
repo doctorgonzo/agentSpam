@@ -11,8 +11,10 @@ export default function Home() {
   const [agents, setAgents] = useState<Map<string, AgentNode>>(new Map());
   const [isRunning, setIsRunning] = useState(false);
   const [finalResult, setFinalResult] = useState<string | null>(null);
+  const [showResult, setShowResult] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const agentsRef = useRef<Map<string, AgentNode>>(new Map());
+  const abortRef = useRef<AbortController | null>(null);
 
   const updateAgent = useCallback(
     (id: string, updates: Partial<AgentNode>) => {
@@ -47,8 +49,18 @@ export default function Home() {
     return { total: agents.size, active, done, errors };
   }, [agents]);
 
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsRunning(false);
+  }, []);
+
   const handleSubmit = useCallback(
     async (prompt: string, file?: FileAttachment) => {
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+
       setIsRunning(true);
       setFinalResult(null);
       setSelectedAgentId(null);
@@ -60,6 +72,7 @@ export default function Home() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt, file }),
+          signal: ac.signal,
         });
 
         if (!res.ok) throw new Error("API error");
@@ -108,6 +121,7 @@ export default function Home() {
 
                 case "final_result":
                   setFinalResult(event.result);
+                  setShowResult(true);
                   break;
 
                 case "done":
@@ -198,12 +212,12 @@ export default function Home() {
                 produces something brilliant.
               </p>
             </div>
-            <InputPanel onSubmit={handleSubmit} isRunning={isRunning} />
+            <InputPanel onSubmit={handleSubmit} onStop={handleStop} isRunning={isRunning} />
           </div>
         ) : (
           <>
             <div className="flex-none p-4 pb-2">
-              <InputPanel onSubmit={handleSubmit} isRunning={isRunning} />
+              <InputPanel onSubmit={handleSubmit} onStop={handleStop} isRunning={isRunning} />
             </div>
 
             <div className="flex-1 min-h-[300px] relative">
@@ -226,17 +240,28 @@ export default function Home() {
               />
             </div>
 
-            {finalResult && (
-              <div className="flex-none p-4 pt-2">
-                <ResultPanel
-                  result={finalResult}
-                  agentCount={agents.size}
-                />
+            {finalResult && !showResult && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 animate-fade-in">
+                <button
+                  onClick={() => setShowResult(true)}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-full shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2"
+                >
+                  <div className="w-2 h-2 rounded-full bg-white/80" />
+                  Show Final Synthesis
+                </button>
               </div>
             )}
           </>
         )}
       </main>
+
+      {showResult && (
+        <ResultPanel
+          result={finalResult}
+          agentCount={agents.size}
+          onClose={() => setShowResult(false)}
+        />
+      )}
     </div>
   );
 }

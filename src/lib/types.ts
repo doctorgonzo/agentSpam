@@ -42,5 +42,5 @@ export const MODEL_LABELS: Record<ModelTier, string> = {
   haiku: "The Intern",
 };
 
-export const MAX_DEPTH = 3;
-export const MAX_AGENTS = 20;
+export const MAX_DEPTH = 5;
+export const MAX_AGENTS = 30;

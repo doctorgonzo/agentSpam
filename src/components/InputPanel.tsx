@@ -5,10 +5,11 @@ import { FileAttachment } from "@/lib/types";
 
 interface InputPanelProps {
   onSubmit: (prompt: string, file?: FileAttachment) => void;
+  onStop: () => void;
   isRunning: boolean;
 }
 
-export default function InputPanel({ onSubmit, isRunning }: InputPanelProps) {
+export default function InputPanel({ onSubmit, onStop, isRunning }: InputPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [file, setFile] = useState<FileAttachment | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -100,20 +101,26 @@ export default function InputPanel({ onSubmit, isRunning }: InputPanelProps) {
             {isRunning ? "" : "Cmd+Enter to send"}
           </span>
 
-          <button
-            type="submit"
-            disabled={isRunning || (!prompt.trim() && !file)}
-            className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-white/5 disabled:text-white/20 text-white font-medium rounded-lg transition-all text-sm"
-          >
-            {isRunning ? (
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Spawning...
-              </span>
-            ) : (
-              "Unleash"
-            )}
-          </button>
+          {isRunning ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition-all text-sm flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <rect x="4" y="4" width="12" height="12" rx="2" />
+              </svg>
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!prompt.trim() && !file}
+              className="px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-white/5 disabled:text-white/20 text-white font-medium rounded-lg transition-all text-sm"
+            >
+              Unleash
+            </button>
+          )}
         </div>
       </div>
     </form>
