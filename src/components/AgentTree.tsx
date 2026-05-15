@@ -71,6 +71,7 @@ function AgentTreeInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { fitView } = useReactFlow();
   const fitViewTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const lastZoomedJudgeId = useRef<string | null>(null);
   const prevNodeCount = useRef(0);
 
   const tierColors: Record<string, string> = useMemo(
@@ -145,7 +146,40 @@ function AgentTreeInner({
     const nodeCountChanged = rawNodes.length !== prevNodeCount.current;
     prevNodeCount.current = rawNodes.length;
 
-    if (nodeCountChanged) {
+    // Detect a fresh judge completion → zoom in on judge + topic + Round 1.
+    const allAgents = Array.from(agents.values());
+    const judge = allAgents.find(
+      (a) => a.debateRole === "judge" && a.status === "complete",
+    );
+    const judgeJustCompleted = judge && judge.id !== lastZoomedJudgeId.current;
+
+    if (judgeJustCompleted) {
+      lastZoomedJudgeId.current = judge.id;
+      const topic = allAgents.find((a) => a.id === judge.parentId);
+      const bullR1 = allAgents.find(
+        (a) =>
+          a.debateRole === "bull" &&
+          a.debateRound === 1 &&
+          a.parentId === topic?.id,
+      );
+      const bearR1 = allAgents.find(
+        (a) =>
+          a.debateRole === "bear" &&
+          a.debateRound === 1 &&
+          a.parentId === topic?.id,
+      );
+      const focusIds = [judge.id, topic?.id, bullR1?.id, bearR1?.id].filter(
+        (x): x is string => typeof x === "string",
+      );
+      if (fitViewTimer.current) clearTimeout(fitViewTimer.current);
+      fitViewTimer.current = setTimeout(() => {
+        fitView({
+          padding: 0.3,
+          duration: 900,
+          nodes: focusIds.map((id) => ({ id })),
+        });
+      }, 200);
+    } else if (nodeCountChanged) {
       if (fitViewTimer.current) clearTimeout(fitViewTimer.current);
       fitViewTimer.current = setTimeout(() => {
         fitView({ padding: 0.2, duration: 400 });
