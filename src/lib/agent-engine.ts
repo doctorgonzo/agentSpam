@@ -405,6 +405,48 @@ OUTPUT FORMAT — nothing else:
   };
 }
 
+const JUNK_PATTERNS = [
+  /^\[error:/i,
+  /^\[stopped\]/i,
+  /^\[max agents reached\]/i,
+  /^i don'?t know/i,
+  /^i'?m not sure/i,
+  /^i cannot/i,
+  /^i can'?t/i,
+  /^sorry,? i/i,
+  /^as an ai/i,
+  /^i'?m unable/i,
+  /^unfortunately/i,
+];
+
+function isJunkResult(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length < 10) return true;
+  return JUNK_PATTERNS.some((p) => p.test(trimmed));
+}
+
+function buildRetryPrompt(
+  task: string,
+  previousAttempt: string,
+  tier: ModelTier,
+): Anthropic.MessageCreateParamsNonStreaming {
+  const upgradedTier = tier === "haiku" ? "sonnet" : tier;
+  return {
+    model: MODEL_IDS[upgradedTier],
+    max_tokens: 400,
+    system:
+      "Your previous answer was inadequate. Give a concrete, specific, substantive response. No hedging, no refusals. If you lack info, reason from what you have.",
+    messages: [
+      { role: "user", content: task },
+      { role: "assistant", content: previousAttempt.slice(0, 200) },
+      {
+        role: "user",
+        content: "That was not useful. Try again — real answer this time.",
+      },
+    ],
+  };
+}
+
 function parseAgentResponse(text: string): AgentResponse {
   const cleaned = text
     .replace(/```json\n?/g, "")
@@ -776,7 +818,14 @@ export async function runAgentTree(
 
       // Specialists (premade or custom) always answer directly — they never decompose
       if (specialty || customSpecialist) {
-        const answer = parsed.type === "answer" ? parsed.answer : responseText;
+        let answer = parsed.type === "answer" ? parsed.answer : responseText;
+        if (isJunkResult(answer)) {
+          try {
+            answer = await call(buildRetryPrompt(task, answer, tier));
+          } catch {
+            // keep original answer if retry fails
+          }
+        }
         emit({ type: "agent_complete", id, result: answer });
         return { label, result: answer };
       }
@@ -902,12 +951,20 @@ export async function runAgentTree(
             )
           : [];
 
-        const childResults = [...nonCriticResults, ...criticResults];
+        const allChildResults = [...nonCriticResults, ...criticResults];
 
         if (signal?.aborted) {
-          const partial = childResults.map((r) => r.result).join("\n\n");
+          const partial = allChildResults.map((r) => r.result).join("\n\n");
           emit({ type: "agent_complete", id, result: partial || "[stopped]" });
           return { label, result: partial || "[stopped]" };
+        }
+
+        const childResults = allChildResults.filter(
+          (r) => !isJunkResult(r.result),
+        );
+        if (childResults.length === 0) {
+          emit({ type: "agent_complete", id, result: "[all sub-agents failed]" });
+          return { label, result: "[all sub-agents failed]" };
         }
 
         const synthesisParams = buildSynthesisPrompt(task, childResults, tier);
@@ -916,8 +973,15 @@ export async function runAgentTree(
         emit({ type: "agent_complete", id, result: synthesis });
         return { label, result: synthesis };
       } else {
-        const answer =
+        let answer =
           parsed.type === "answer" ? parsed.answer : responseText;
+        if (isJunkResult(answer)) {
+          try {
+            answer = await call(buildRetryPrompt(task, answer, tier));
+          } catch {
+            // keep original answer if retry fails
+          }
+        }
         emit({ type: "agent_complete", id, result: answer });
         return { label, result: answer };
       }
