@@ -139,18 +139,20 @@ JSON now:
 
 function buildLeafPrompt(
   task: string,
+  sharedContext?: string | null,
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 300,
     system:
       "You are THE INTERN — one brain cell, one job. Do it in 1-3 sentences. Be direct and a little cheeky. End with [confidence: X/10].",
-    messages: [{ role: "user", content: `Your one job: ${task}` }],
+    messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, "Your one job: ") }],
   };
 }
 
 function buildResearcherPrompt(
   task: string,
+  sharedContext?: string | null,
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.sonnet,
@@ -158,13 +160,14 @@ function buildResearcherPrompt(
     system: `You are THE RESEARCHER — a specialist agent with web search. You hunt down hard facts.
 
 Use web search (max 2 searches) to find SPECIFIC data: numbers, names, dates, sources. Then return your findings in 3-6 tight bullet points with sources cited inline. No fluff, no preamble, no "I'll search for...". Just the facts and where they came from. End with [confidence: X/10].`,
-    messages: [{ role: "user", content: `Research task: ${task}` }],
+    messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, "Research task: ") }],
     tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 2 }],
   };
 }
 
 function buildCalculatorPrompt(
   task: string,
+  sharedContext?: string | null,
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
@@ -172,13 +175,39 @@ function buildCalculatorPrompt(
     system: `You are THE CALCULATOR — a specialist agent for numbers. You do math, percentages, comparisons, and projections with precision.
 
 Show your math step by step using markdown. Always state your assumptions. End with a single-line "Answer:" followed by the result. Be concise but exact — wrong numbers are unforgivable. End with [confidence: X/10].`,
-    messages: [{ role: "user", content: `Calculation: ${task}` }],
+    messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, "Calculation: ") }],
   };
+}
+
+// Build a user message content array that puts the (large, reused)
+// sharedContext block first with cache_control, then the per-agent task.
+// The cached block must be at least ~1024 tokens to actually hit the
+// cache — that's why we bumped the sharedContext cap to 6000 chars.
+function buildCachedUserContent(
+  task: string,
+  sharedContext: string | null | undefined,
+  taskPrefix: string,
+): Anthropic.MessageCreateParamsNonStreaming["messages"][0]["content"] {
+  if (!sharedContext) {
+    return taskPrefix + task;
+  }
+  return [
+    {
+      type: "text",
+      text: `[Source material to draw on]:\n${sharedContext}`,
+      cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text: taskPrefix + task,
+    },
+  ];
 }
 
 function buildCustomSpecialistPrompt(
   task: string,
   spec: CustomSpecialist,
+  sharedContext?: string | null,
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.sonnet,
@@ -195,7 +224,7 @@ OPTIONAL — if your finding would benefit from concrete next steps the user cou
 Only emit actions that genuinely fit. No fluff. ISO datetimes, no extra punctuation inside fields.
 
 End with [confidence: X/10].`,
-    messages: [{ role: "user", content: `Your task: ${task}` }],
+    messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, "Your task: ") }],
   };
 }
 
@@ -309,7 +338,7 @@ function buildScoutPrompt(
   userPrompt: string,
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
-    model: MODEL_IDS.opus,
+    model: MODEL_IDS.haiku,
     max_tokens: 1200,
     system: `You are THE SCOUT — a recon agent with web search. The sub-agents downstream have NO internet access, so YOU are their only source of live data. They will rely entirely on what you return.
 
@@ -364,7 +393,7 @@ function buildDocExtractorPrompt(
   });
 
   return {
-    model: MODEL_IDS.opus,
+    model: MODEL_IDS.haiku,
     max_tokens: 2500,
     system:
       "You are THE EXTRACTOR. Your only job is reading the attached document and dumping its key content as structured text. Use markdown with clear headings. Include actual content (names, numbers, quotes) — do NOT summarize generically. Do NOT add commentary. Just the facts as they appear.",
@@ -846,7 +875,7 @@ export async function runAgentTree(
           ? `Compare/analyze these ${files.length} documents: ${files.map((f) => f.name).join(", ")}`
           : `Analyze this ${files[0].name}`;
       enrichedPrompt = `${prompt || taskHint}\n\n${combined}`;
-      sharedContext = combined.length > 2000 ? combined.slice(0, 2000) + "..." : combined;
+      sharedContext = combined.length > 6000 ? combined.slice(0, 6000) + "..." : combined;
       emit({ type: "scout_complete", findings: combined });
     } else if (files.length === 1) {
       // Extractor failed on a single file — fall back to multimodal Brain so
@@ -865,7 +894,7 @@ export async function runAgentTree(
       // no web access so anything truncated here is lost downstream.
       const truncated = findings.length > 3000 ? findings.slice(0, 3000) + "..." : findings;
       enrichedPrompt = `${prompt}\n\n[Live data from Scout — embed relevant facts into each subtask description so sub-agents can work with real data]:\n${truncated}`;
-      sharedContext = findings.length > 2000 ? findings.slice(0, 2000) + "..." : findings;
+      sharedContext = findings.length > 6000 ? findings.slice(0, 6000) + "..." : findings;
       emit({ type: "scout_complete", findings });
     } else {
       emit({ type: "scout_complete", findings: null });
@@ -1091,26 +1120,27 @@ export async function runAgentTree(
       let params: Anthropic.MessageCreateParamsNonStreaming;
 
       // Answer-producing agents (leaves + specialists) get the shared doc/scout
-      // context inlined so facts survive even if upstream decomposers dropped them.
-      const answerTask =
+      // context inlined via cache_control so facts survive even if upstream
+      // decomposers dropped them, AND repeated input is cached across agents.
+      const ctxForAnswer =
         sharedContext && (specialty || customSpecialist || depth >= cfg.maxDepth)
-          ? `${task}\n\n[Source material to draw on]:\n${sharedContext}`
-          : task;
+          ? sharedContext
+          : null;
 
       if (customSpecialist) {
-        params = buildCustomSpecialistPrompt(answerTask, customSpecialist);
+        params = buildCustomSpecialistPrompt(task, customSpecialist, ctxForAnswer);
       } else if (specialty === "researcher") {
-        params = buildResearcherPrompt(answerTask);
+        params = buildResearcherPrompt(task, ctxForAnswer);
       } else if (specialty === "calculator") {
-        params = buildCalculatorPrompt(answerTask);
+        params = buildCalculatorPrompt(task, ctxForAnswer);
       } else if (specialty === "critic") {
-        params = buildCriticPrompt(answerTask, criticContext || []);
+        params = buildCriticPrompt(task, criticContext || []);
       } else if (depth === 0 && activeFile) {
         params = buildRootMultimodalPrompt(task, activeFile, mode, cfg);
       } else if (depth === 0) {
         params = buildRootPrompt(task, mode, cfg);
       } else if (depth >= cfg.maxDepth) {
-        params = buildLeafPrompt(answerTask);
+        params = buildLeafPrompt(task, ctxForAnswer);
       } else if (depth === 1) {
         params = buildManagerPrompt(task, cfg);
       } else {
