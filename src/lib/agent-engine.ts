@@ -750,6 +750,9 @@ export async function runAgentTree(
 
   let enrichedPrompt = prompt;
   let activeFile: FileAttachment | undefined = undefined;
+  // Shared context passed to ALL answer-producing agents (leaves + specialists)
+  // so that facts survive the decomposition chain. Capped for token cost.
+  let sharedContext: string | null = null;
 
   if (files.length > 0) {
     // Two-pass file flow: Extractor reads each doc as text, Brain decomposes the text.
@@ -774,11 +777,16 @@ export async function runAgentTree(
           ? `Compare/analyze these ${files.length} documents: ${files.map((f) => f.name).join(", ")}`
           : `Analyze this ${files[0].name}`;
       enrichedPrompt = `${prompt || taskHint}\n\n${combined}`;
+      sharedContext = combined.length > 2000 ? combined.slice(0, 2000) + "..." : combined;
       emit({ type: "scout_complete", findings: combined });
+    } else if (files.length === 1) {
+      // Extractor failed on a single file — fall back to multimodal Brain so
+      // it can read the file directly.
+      activeFile = files[0];
+      emit({ type: "scout_complete", findings: null });
     } else {
       emit({ type: "scout_complete", findings: null });
     }
-    // Clear: spawnAgent uses text-only Brain with extracted content baked in.
   } else if (prompt.trim()) {
     emit({ type: "scout_searching" });
     const findings = await runScoutLocal(prompt);
@@ -788,6 +796,7 @@ export async function runAgentTree(
       // no web access so anything truncated here is lost downstream.
       const truncated = findings.length > 3000 ? findings.slice(0, 3000) + "..." : findings;
       enrichedPrompt = `${prompt}\n\n[Live data from Scout — embed relevant facts into each subtask description so sub-agents can work with real data]:\n${truncated}`;
+      sharedContext = findings.length > 2000 ? findings.slice(0, 2000) + "..." : findings;
       emit({ type: "scout_complete", findings });
     } else {
       emit({ type: "scout_complete", findings: null });
@@ -855,20 +864,27 @@ export async function runAgentTree(
     try {
       let params: Anthropic.MessageCreateParamsNonStreaming;
 
+      // Answer-producing agents (leaves + specialists) get the shared doc/scout
+      // context inlined so facts survive even if upstream decomposers dropped them.
+      const answerTask =
+        sharedContext && (specialty || customSpecialist || depth >= MAX_DEPTH)
+          ? `${task}\n\n[Source material to draw on]:\n${sharedContext}`
+          : task;
+
       if (customSpecialist) {
-        params = buildCustomSpecialistPrompt(task, customSpecialist);
+        params = buildCustomSpecialistPrompt(answerTask, customSpecialist);
       } else if (specialty === "researcher") {
-        params = buildResearcherPrompt(task);
+        params = buildResearcherPrompt(answerTask);
       } else if (specialty === "calculator") {
-        params = buildCalculatorPrompt(task);
+        params = buildCalculatorPrompt(answerTask);
       } else if (specialty === "critic") {
-        params = buildCriticPrompt(task, criticContext || []);
+        params = buildCriticPrompt(answerTask, criticContext || []);
       } else if (depth === 0 && activeFile) {
         params = buildRootMultimodalPrompt(task, activeFile, mode);
       } else if (depth === 0) {
         params = buildRootPrompt(task, mode);
       } else if (depth >= MAX_DEPTH) {
-        params = buildLeafPrompt(task);
+        params = buildLeafPrompt(answerTask);
       } else if (depth === 1) {
         params = buildManagerPrompt(task);
       } else {
@@ -918,17 +934,18 @@ export async function runAgentTree(
             // keep pre-escalation answer
           }
         }
-        if (answer.length > 50 && !signal?.aborted) {
-          emit({ type: "agent_reviewing", id });
-          try {
-            const reviewed = await call(buildSelfReviewPrompt(task, answer, tier));
-            if (!isJunkResult(reviewed) && reviewed.length > 20) {
-              answer = parseConfidence(reviewed).clean;
-            }
-          } catch {
-            // keep original
-          }
-        }
+        // Self-review disabled to save API costs — re-enable by uncommenting.
+        // if (answer.length > 50 && !signal?.aborted) {
+        //   emit({ type: "agent_reviewing", id });
+        //   try {
+        //     const reviewed = await call(buildSelfReviewPrompt(task, answer, tier));
+        //     if (!isJunkResult(reviewed) && reviewed.length > 20) {
+        //       answer = parseConfidence(reviewed).clean;
+        //     }
+        //   } catch {
+        //     // keep original
+        //   }
+        // }
         emit({ type: "agent_complete", id, result: answer });
         return { label, result: answer };
       }
