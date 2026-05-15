@@ -84,19 +84,19 @@ export default function BackgroundFX_v3() {
     }
 
     function buildColumns() {
-      const fontSize = Math.max(14, Math.floor(width / 80));
-      const colWidth = fontSize * 1.05;
+      const fontSize = Math.max(13, Math.floor(width / 110));
+      const colWidth = fontSize * 1.8;
       const colCount = Math.ceil(width / colWidth);
       columns = [];
       for (let i = 0; i < colCount; i++) {
-        const trail = 12 + Math.floor(Math.random() * 22);
+        const trail = 8 + Math.floor(Math.random() * 14);
         const glyphs: string[] = [];
         for (let g = 0; g < trail + 4; g++) glyphs.push(pickGlyph());
         columns.push({
           x: i * colWidth + colWidth / 2,
           // stagger start so all columns aren't synchronized
           y: -Math.random() * height,
-          speed: 0.6 + Math.random() * 1.6,
+          speed: 0.25 + Math.random() * 0.7,
           trail,
           hue: 240 + Math.random() * 80, // blue → purple → fuchsia
           fontSize,
@@ -128,9 +128,9 @@ export default function BackgroundFX_v3() {
         r: 0,
         maxR: 220 + Math.random() * 260,
         hue: 270 + Math.random() * 50,
-        alpha: 0.22 + Math.random() * 0.12,
+        alpha: 0.08 + Math.random() * 0.05,
       });
-      if (rings.length > 8) rings.shift();
+      if (rings.length > 4) rings.shift();
     }
 
     function step() {
@@ -143,7 +143,7 @@ export default function BackgroundFX_v3() {
       ctx.fillRect(0, 0, width, height);
 
       // ---- Pulse rings (drawn first so rain sits on top) ----
-      if (frame % 90 === 0) spawnRing();
+      if (frame % 180 === 0) spawnRing();
       for (let i = rings.length - 1; i >= 0; i--) {
         const ring = rings[i];
         ring.r += 1.4;
@@ -198,16 +198,16 @@ export default function BackgroundFX_v3() {
           const glyph = col.glyphs[glyphIdx];
 
           if (i === 0) {
-            // Bright leading head — almost white with a colored glow.
-            ctx.shadowBlur = 14;
-            ctx.shadowColor = `hsla(${col.hue}, 100%, 70%, 0.95)`;
-            ctx.fillStyle = `hsla(${col.hue}, 100%, 92%, 1)`;
+            // Dim leading head — soft colored glow, not white.
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = `hsla(${col.hue}, 80%, 55%, 0.4)`;
+            ctx.fillStyle = `hsla(${col.hue}, 70%, 75%, 0.55)`;
           } else {
             ctx.shadowBlur = 0;
             // Fade tail: closer to head = brighter.
             const t = 1 - i / col.trail;
-            const alpha = Math.max(0, t * 0.85);
-            ctx.fillStyle = `hsla(${col.hue}, 90%, ${45 + t * 30}%, ${alpha})`;
+            const alpha = Math.max(0, t * 0.35);
+            ctx.fillStyle = `hsla(${col.hue}, 80%, ${40 + t * 20}%, ${alpha})`;
           }
           ctx.fillText(glyph, col.x - fs / 2, yPos);
         }
@@ -217,9 +217,9 @@ export default function BackgroundFX_v3() {
         // so columns don't all reset at the same moment).
         if (col.y - col.trail * fs > height) {
           col.y = -Math.random() * height * 0.5;
-          col.speed = 0.6 + Math.random() * 1.6;
+          col.speed = 0.25 + Math.random() * 0.7;
           col.hue = 240 + Math.random() * 80;
-          col.trail = 12 + Math.floor(Math.random() * 22);
+          col.trail = 8 + Math.floor(Math.random() * 14);
         }
       }
 
