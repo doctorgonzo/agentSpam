@@ -351,8 +351,9 @@ export default function Home() {
   const hasAgents = agents.size > 0;
 
   return (
-    <div className="relative flex flex-col h-screen bg-transparent text-white overflow-hidden">
+    <div className="relative flex flex-col h-screen bg-transparent text-white overflow-hidden isolate">
       <BackgroundFX />
+      <div className="relative z-10 flex flex-col flex-1 min-h-0">
       {/* Header */}
       <header className="flex-none px-6 py-3 border-b border-white/5">
         <div className="flex items-center justify-between w-full">
@@ -534,6 +535,7 @@ export default function Home() {
           </>
         )}
       </main>
+      </div>
 
       {showResult && (
         <ResultPanel
