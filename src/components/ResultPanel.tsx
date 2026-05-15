@@ -15,6 +15,8 @@ interface ResultPanelProps {
   humanMinutes: number;
   role: string;
   actions?: ProposedAction[];
+  soloResult?: string | null;
+  soloElapsedMs?: number | null;
 }
 
 export default function ResultPanel({
@@ -27,6 +29,8 @@ export default function ResultPanel({
   humanMinutes,
   role,
   actions = [],
+  soloResult,
+  soloElapsedMs,
 }: ResultPanelProps) {
   const [copied, setCopied] = useState(false);
 
@@ -148,9 +152,40 @@ export default function ResultPanel({
             </div>
           )}
 
-          <div className="prose prose-invert prose-base max-w-none prose-headings:text-purple-200 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-white prose-p:text-white/80 prose-p:leading-relaxed prose-li:text-white/80 prose-code:text-purple-300 prose-hr:border-white/10 prose-a:text-purple-400">
-            <ReactMarkdown>{result}</ReactMarkdown>
-          </div>
+          {soloResult ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+              <div className="bg-purple-950/30 border border-purple-500/30 rounded-xl p-5">
+                <div className="flex items-baseline justify-between mb-3">
+                  <div className="text-purple-300 text-[10px] uppercase tracking-widest font-bold">
+                    {agentCount} agents · ${totalCost.toFixed(4)}
+                  </div>
+                  <div className="text-purple-200/60 text-[10px] font-mono">
+                    {(elapsedMs / 1000).toFixed(1)}s
+                  </div>
+                </div>
+                <div className="prose prose-invert prose-sm max-w-none prose-headings:text-purple-200 prose-strong:text-white prose-p:text-white/80 prose-p:leading-relaxed prose-li:text-white/80 prose-code:text-purple-300 prose-hr:border-white/10 prose-a:text-purple-400">
+                  <ReactMarkdown>{result}</ReactMarkdown>
+                </div>
+              </div>
+              <div className="bg-zinc-800/40 border border-zinc-500/30 rounded-xl p-5">
+                <div className="flex items-baseline justify-between mb-3">
+                  <div className="text-zinc-300 text-[10px] uppercase tracking-widest font-bold">
+                    Solo Claude · same prompt, no tree
+                  </div>
+                  <div className="text-zinc-300/60 text-[10px] font-mono">
+                    {soloElapsedMs ? `${(soloElapsedMs / 1000).toFixed(1)}s` : ""}
+                  </div>
+                </div>
+                <div className="prose prose-invert prose-sm max-w-none prose-headings:text-zinc-200 prose-strong:text-white prose-p:text-white/70 prose-p:leading-relaxed prose-li:text-white/70 prose-code:text-zinc-300 prose-hr:border-white/10 prose-a:text-zinc-300">
+                  <ReactMarkdown>{soloResult}</ReactMarkdown>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="prose prose-invert prose-base max-w-none prose-headings:text-purple-200 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-white prose-p:text-white/80 prose-p:leading-relaxed prose-li:text-white/80 prose-code:text-purple-300 prose-hr:border-white/10 prose-a:text-purple-400">
+              <ReactMarkdown>{result}</ReactMarkdown>
+            </div>
+          )}
 
           {actions.length > 0 && (
             <div className="mt-6">

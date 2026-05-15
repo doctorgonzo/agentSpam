@@ -122,6 +122,9 @@ export default function Home() {
   const [showMemory, setShowMemory] = useState(false);
   const [appMode, setAppMode] = useState<"dev" | "demo">("dev");
   const [actionsDismissed, setActionsDismissed] = useState(false);
+  const [soloResult, setSoloResult] = useState<string | null>(null);
+  const [soloElapsedMs, setSoloElapsedMs] = useState<number | null>(null);
+  const [soloRunning, setSoloRunning] = useState(false);
   const [actions, setActions] = useState<ProposedAction[]>([]);
 
   useEffect(() => {
@@ -288,6 +291,31 @@ export default function Home() {
       setFinalResult(null);
       setActions([]);
       setActionsDismissed(false);
+      setSoloResult(null);
+      setSoloElapsedMs(null);
+      setSoloRunning(true);
+
+      // Fire the single-Claude foil in parallel with the main tree run.
+      // Same prompt, no system prompt, no decomposition — just one shot for
+      // the side-by-side comparison.
+      (async () => {
+        try {
+          const r = await fetch("/api/single", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt }),
+            signal: ac.signal,
+          });
+          if (!r.ok) throw new Error("solo failed");
+          const data = (await r.json()) as { text?: string; elapsedMs?: number };
+          setSoloResult(data.text || "(empty response)");
+          setSoloElapsedMs(data.elapsedMs ?? null);
+        } catch {
+          setSoloResult(null);
+        } finally {
+          setSoloRunning(false);
+        }
+      })();
       setSelectedAgentId(null);
       setScoutStatus("idle");
       setScoutFindings(null);
@@ -490,6 +518,29 @@ export default function Home() {
             </button>
           </div>
           <div className="flex items-center gap-3 text-xs">
+            {(soloRunning || soloResult !== null) && (
+              <div
+                title={
+                  soloRunning
+                    ? "Single Claude (no decomposition) is racing your tree…"
+                    : "Single Claude finished — view its answer alongside yours in the synthesis modal"
+                }
+                className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] font-mono ${
+                  soloRunning
+                    ? "border-zinc-500/40 bg-zinc-500/10 text-zinc-300"
+                    : "border-zinc-400/40 bg-zinc-700/30 text-zinc-200"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${soloRunning ? "bg-zinc-300 animate-pulse" : "bg-zinc-200"}`} />
+                <span>solo claude</span>
+                {soloElapsedMs !== null && (
+                  <>
+                    <span className="text-white/20">·</span>
+                    <span>{(soloElapsedMs / 1000).toFixed(1)}s</span>
+                  </>
+                )}
+              </div>
+            )}
             {(isRunning || totalCost > 0) && (
               <div
                 title="Estimated cost vs. equivalent human work time"
@@ -694,6 +745,8 @@ export default function Home() {
           humanMinutes={humanMinutes}
           role={lastRole}
           actions={actions}
+          soloResult={soloResult}
+          soloElapsedMs={soloElapsedMs}
         />
       )}
 
