@@ -297,6 +297,16 @@ export default function Home() {
         console.error("Stream error:", err);
       }
 
+      // Any agents still in spawning/thinking state when the stream ends
+      // are orphaned (likely from a server timeout). Mark them as errored
+      // so the UI doesn't show them as forever-ticking.
+      agentsRef.current.forEach((agent, id) => {
+        if (agent.status === "spawning" || agent.status === "thinking") {
+          agentsRef.current.set(id, { ...agent, status: "error" });
+        }
+      });
+      setAgents(new Map(agentsRef.current));
+
       setIsRunning(false);
     },
     [updateAgent],

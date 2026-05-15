@@ -1,7 +1,7 @@
 import { runAgentTree } from "@/lib/agent-engine";
 import { AgentEvent, SpawnRequest } from "@/lib/types";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const body: SpawnRequest = await req.json();
