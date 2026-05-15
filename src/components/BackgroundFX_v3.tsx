@@ -2,16 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import config from "@/lib/config";
-
-// In demo mode, force classic Matrix green. In dev/prod, the cool
-// purple/fuchsia/blue scheme stays.
-const DEMO_HUE_BASE = 110;
-const DEMO_HUE_RANGE = 30;
-const PROD_HUE_BASE = 240;
-const PROD_HUE_RANGE = 80;
-const HUE_BASE = config.mode === "demo" ? DEMO_HUE_BASE : PROD_HUE_BASE;
-const HUE_RANGE = config.mode === "demo" ? DEMO_HUE_RANGE : PROD_HUE_RANGE;
+// Purple/fuchsia/blue scheme everywhere.
+const HUE_BASE = 240;
+const HUE_RANGE = 80;
 
 /**
  * BackgroundFX_v3 — Matrix-style symbol rain with ambient pulse rings.
