@@ -98,41 +98,6 @@ We have 14 months of runway at current burn. Founder/CEO is non-technical, raise
     mode: "market",
     role: "consultant",
   },
-  {
-    emoji: "\u{1F9E9}",
-    title: "Solve this nasty logic puzzle",
-    subtitle: "Five suspects, one liar, one killer",
-    prompt: `Solve this. Show your reasoning, then name both the killer and the liar.
-
-Five people were in a locked room when a murder happened: Alice, Bram, Cora, Dax, Elif. Exactly one of them is the killer. Exactly one of them is the liar (every statement they make is false). The other four are truthful (every statement they make is true). The killer is NOT the liar.
-
-Statements:
-- Alice says: "I am innocent."
-- Bram says: "Cora is the killer."
-- Cora says: "Bram is lying."
-- Dax says: "I am innocent."
-- Elif says: "Bram is innocent."
-
-Who is the killer? Who is the liar? Walk through the elimination case by case.`,
-    mode: "puzzle",
-    role: "consultant",
-  },
-  {
-    emoji: "\u{1F4E3}",
-    title: "Write marketing copy for a weird new product",
-    subtitle: "Tagline, landing page hero, 3 ad headlines",
-    prompt: `Write the marketing for this new product. I need: a tagline (max 7 words), a 2-sentence landing page hero, 3 ad headlines for different audiences, and one "objection killer" line for the price.
-
-PRODUCT: A $349 desktop appliance called "Loaf" — a 4lb wooden cube with a single brass button. When you press the button, your phone goes on Do Not Disturb for 25 minutes, your Slack status flips to "Loafing", and a small LED on top glows amber. That's it. No screen, no app, no AI.
-
-TARGET: knowledge workers who hate themselves for being distracted but also resent productivity SaaS. Early-30s to mid-40s. The product is half-joke, half-sincere.
-
-VIBE: should feel like Aesop the skincare brand crossed with a high-end butcher block. Not snarky. Not earnest-tech-bro. Quietly confident, slightly literary. Imagine Patagonia made a focus timer.
-
-Write copy that actually sells this without being cringe.`,
-    mode: "creative",
-    role: "consultant",
-  },
 ];
 
 export default function Home() {
