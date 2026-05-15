@@ -187,7 +187,14 @@ function buildCustomSpecialistPrompt(
 
 Your role: ${spec.role}
 
-Stay in character. Be sharp, specific, concise. Output markdown. Lead with your strongest finding. No preamble. End with [confidence: X/10].`,
+Stay in character. Be sharp, specific, concise. Output markdown. Lead with your strongest finding. No preamble.
+
+OPTIONAL — if your finding would benefit from concrete next steps the user could TAKE, emit one or two action blocks. Format exactly:
+[ACTION: calendar | title=Meeting title | when=2026-05-16T14:00:00Z | duration=30 | notes=Why this matters]
+[ACTION: email | to=person@example.com | subject=Subject line | body=Email body text]
+Only emit actions that genuinely fit. No fluff. ISO datetimes, no extra punctuation inside fields.
+
+End with [confidence: X/10].`,
     messages: [{ role: "user", content: `Your task: ${task}` }],
   };
 }
@@ -467,6 +474,47 @@ function buildRetryPrompt(
 }
 
 const CONFIDENCE_TAG = /\[confidence:\s*(\d+)\s*\/\s*10\]/i;
+
+// Parse [ACTION: kind | key=value | key=value] blocks emitted by agents.
+// Returns extracted actions + the text with blocks stripped.
+const ACTION_BLOCK = /\[ACTION:\s*([^\]]+)\]/gi;
+function parseActions(
+  text: string,
+): { clean: string; actions: import("./types").ProposedAction[] } {
+  const actions: import("./types").ProposedAction[] = [];
+  const stripped = text.replace(ACTION_BLOCK, (_, inner) => {
+    const parts = String(inner)
+      .split("|")
+      .map((p: string) => p.trim());
+    const kind = parts[0]?.toLowerCase();
+    const fields: Record<string, string> = {};
+    for (let i = 1; i < parts.length; i++) {
+      const eq = parts[i].indexOf("=");
+      if (eq < 0) continue;
+      const k = parts[i].slice(0, eq).trim().toLowerCase();
+      const v = parts[i].slice(eq + 1).trim();
+      if (k) fields[k] = v;
+    }
+    if (kind === "calendar" && fields.title && fields.when) {
+      actions.push({
+        kind: "calendar",
+        title: fields.title,
+        whenISO: fields.when,
+        durationMins: fields.duration ? parseInt(fields.duration, 10) || 60 : 60,
+        notes: fields.notes,
+      });
+    } else if (kind === "email" && fields.subject && fields.body) {
+      actions.push({
+        kind: "email",
+        to: fields.to,
+        subject: fields.subject,
+        body: fields.body,
+      });
+    }
+    return ""; // strip block from displayed text
+  });
+  return { clean: stripped.trim(), actions };
+}
 
 function parseConfidence(text: string): { clean: string; confidence: number } {
   const match = text.match(CONFIDENCE_TAG);
@@ -1124,6 +1172,11 @@ export async function runAgentTree(
         //     // keep original
         //   }
         // }
+        const actionParse = parseActions(answer);
+        answer = actionParse.clean || answer;
+        for (const action of actionParse.actions) {
+          emit({ type: "action_proposed", agentId: id, action });
+        }
         emit({ type: "agent_complete", id, result: answer });
         return { label, result: answer };
       }
@@ -1306,6 +1359,11 @@ export async function runAgentTree(
           } catch {
             // keep pre-escalation answer
           }
+        }
+        const actionParse = parseActions(answer);
+        answer = actionParse.clean || answer;
+        for (const action of actionParse.actions) {
+          emit({ type: "action_proposed", agentId: id, action });
         }
         emit({ type: "agent_complete", id, result: answer });
         return { label, result: answer };

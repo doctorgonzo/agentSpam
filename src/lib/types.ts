@@ -37,6 +37,21 @@ export const SPECIALTY_EMOJI: Record<Specialty, string> = {
   critic: "\u{1F928}",
 };
 
+export type ProposedAction =
+  | {
+      kind: "calendar";
+      title: string;
+      whenISO: string; // ISO datetime
+      durationMins?: number;
+      notes?: string;
+    }
+  | {
+      kind: "email";
+      to?: string;
+      subject: string;
+      body: string;
+    };
+
 export type AgentEvent =
   | { type: "scout_searching" }
   | { type: "scout_complete"; findings: string | null }
@@ -46,6 +61,7 @@ export type AgentEvent =
   | { type: "agent_named"; id: string; name: string }
   | { type: "agent_escalated"; id: string; from: ModelTier; to: ModelTier; confidence: number }
   | { type: "agent_reviewing"; id: string }
+  | { type: "action_proposed"; agentId: string; action: ProposedAction }
   | { type: "memory_gist"; prompt: string; gist: string; mode?: string }
   | { type: "agent_error"; id: string; error: string }
   | { type: "cost_update"; totalCost: number; humanMinutes: number }

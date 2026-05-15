@@ -7,6 +7,7 @@ import {
   FileAttachment,
   MissionMode,
   MISSION_MODES,
+  ProposedAction,
   WORKER_ROLES,
 } from "@/lib/types";
 import {
@@ -23,6 +24,7 @@ import AgentTree from "@/components/AgentTree";
 import InputPanel from "@/components/InputPanel";
 import ResultPanel from "@/components/ResultPanel";
 import DetailPanel from "@/components/DetailPanel";
+import ActionsPanel from "@/components/ActionsPanel";
 import BackgroundFX from "@/components/BackgroundFX_v3";
 
 interface DemoPrompt {
@@ -119,6 +121,7 @@ export default function Home() {
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
   const [showMemory, setShowMemory] = useState(false);
   const [appMode, setAppMode] = useState<"dev" | "demo">("dev");
+  const [actions, setActions] = useState<ProposedAction[]>([]);
 
   useEffect(() => {
     try {
@@ -282,6 +285,7 @@ export default function Home() {
 
       setIsRunning(true);
       setFinalResult(null);
+      setActions([]);
       setSelectedAgentId(null);
       setScoutStatus("idle");
       setScoutFindings(null);
@@ -412,6 +416,10 @@ export default function Home() {
                 case "agent_error":
                   updateAgent(event.id, { status: "error" });
                   errorSound();
+                  break;
+
+                case "action_proposed":
+                  setActions((prev) => [...prev, event.action]);
                   break;
 
                 case "final_result":
@@ -683,7 +691,19 @@ export default function Home() {
           elapsedMs={elapsedMs}
           humanMinutes={humanMinutes}
           role={lastRole}
+          actions={actions}
         />
+      )}
+
+      {/* Floating actions card: visible whenever proposed actions exist but
+          the result modal is closed (e.g. actions streamed in mid-run, or the
+          user dismissed the modal but wants to fire actions later). */}
+      {!showResult && actions.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-[80] w-[360px] max-h-[70vh] overflow-y-auto bg-zinc-900/95 backdrop-blur-md border border-purple-500/30 rounded-2xl shadow-2xl shadow-purple-500/10 animate-fade-in">
+          <div className="p-3">
+            <ActionsPanel actions={actions} />
+          </div>
+        </div>
       )}
 
       {showMemory && (

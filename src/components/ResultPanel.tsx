@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { WORKER_ROLES } from "@/lib/types";
+import { ProposedAction, WORKER_ROLES } from "@/lib/types";
+import ActionsPanel from "@/components/ActionsPanel";
 
 interface ResultPanelProps {
   result: string | null;
@@ -13,6 +14,7 @@ interface ResultPanelProps {
   elapsedMs: number;
   humanMinutes: number;
   role: string;
+  actions?: ProposedAction[];
 }
 
 export default function ResultPanel({
@@ -24,6 +26,7 @@ export default function ResultPanel({
   elapsedMs,
   humanMinutes,
   role,
+  actions = [],
 }: ResultPanelProps) {
   const [copied, setCopied] = useState(false);
 
@@ -148,6 +151,12 @@ export default function ResultPanel({
           <div className="prose prose-invert prose-base max-w-none prose-headings:text-purple-200 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-white prose-p:text-white/80 prose-p:leading-relaxed prose-li:text-white/80 prose-code:text-purple-300 prose-hr:border-white/10 prose-a:text-purple-400">
             <ReactMarkdown>{result}</ReactMarkdown>
           </div>
+
+          {actions.length > 0 && (
+            <div className="mt-6">
+              <ActionsPanel actions={actions} />
+            </div>
+          )}
         </div>
       </div>
     </div>
