@@ -153,16 +153,26 @@ export default function Home() {
 
   function speakVerdict(text: string) {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
-    // Strip markdown so we don't speak asterisks and pound signs.
-    const clean = text
+    // Pull JUST the "VERDICT: ..." line if the judge produced one;
+    // fallback to the last sentence so we never read the whole essay.
+    const verdictMatch = text.match(/\*\*\s*VERDICT\s*:?\s*\*\*\s*([^\n]+)/i);
+    let line = verdictMatch?.[1] ?? "";
+    if (!line) {
+      const sentences = text
+        .replace(/[*_#>`]+/g, "")
+        .split(/(?<=[.!?])\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      line = sentences[sentences.length - 1] ?? "";
+    }
+    const clean = line
       .replace(/```[\s\S]*?```/g, "")
       .replace(/`([^`]+)`/g, "$1")
       .replace(/[*_#>]+/g, "")
       .replace(/\[(.+?)\]\(.+?\)/g, "$1")
-      .replace(/\n{2,}/g, ". ")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 800);
+      .slice(0, 240);
     if (!clean) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(clean);

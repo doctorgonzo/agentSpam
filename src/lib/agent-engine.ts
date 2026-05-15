@@ -1026,7 +1026,12 @@ export async function runAgentTree(
       const verdict = await call({
         model: MODEL_IDS.opus,
         max_tokens: 600,
-        system: `You are THE JUDGE — you watched a ${cfg.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side. End with a clear ruling. Be decisive.`,
+        system: `You are THE JUDGE — you watched a ${cfg.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side.
+
+End with EXACTLY this format on its own final line:
+**VERDICT:** <one-sentence ruling, 15 words max, declarative>
+
+Be decisive.`,
         messages: [
           {
             role: "user",
