@@ -2,6 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import config from "@/lib/config";
+
+// In demo mode, force classic Matrix green. In dev/prod, the cool
+// purple/fuchsia/blue scheme stays.
+const DEMO_HUE_BASE = 110;
+const DEMO_HUE_RANGE = 30;
+const PROD_HUE_BASE = 240;
+const PROD_HUE_RANGE = 80;
+const HUE_BASE = config.mode === "demo" ? DEMO_HUE_BASE : PROD_HUE_BASE;
+const HUE_RANGE = config.mode === "demo" ? DEMO_HUE_RANGE : PROD_HUE_RANGE;
 
 /**
  * BackgroundFX_v3 — Matrix-style symbol rain with ambient pulse rings.
@@ -114,7 +124,7 @@ export default function BackgroundFX_v3() {
           y: -Math.random() * height,
           speed: 0.25 + Math.random() * 0.7,
           trail,
-          hue: 240 + Math.random() * 80, // blue → purple → fuchsia
+          hue: HUE_BASE + Math.random() * HUE_RANGE, // blue → purple → fuchsia
           fontSize,
           glyphs,
           nextSwap: Math.floor(Math.random() * 30),
@@ -143,7 +153,7 @@ export default function BackgroundFX_v3() {
         y: Math.random() * height,
         r: 0,
         maxR: 220 + Math.random() * 260,
-        hue: 270 + Math.random() * 50,
+        hue: HUE_BASE + Math.random() * HUE_RANGE,
         alpha: 0.08 + Math.random() * 0.05,
       });
       if (rings.length > 4) rings.shift();
@@ -250,7 +260,7 @@ export default function BackgroundFX_v3() {
         if (col.y - col.trail * fs > height) {
           col.y = -Math.random() * height * 0.5;
           col.speed = 0.25 + Math.random() * 0.7;
-          col.hue = 240 + Math.random() * 80;
+          col.hue = HUE_BASE + Math.random() * HUE_RANGE;
           col.trail = 8 + Math.floor(Math.random() * 14);
         }
       }
