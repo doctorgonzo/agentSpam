@@ -80,8 +80,10 @@ export const MODEL_LABELS: Record<ModelTier, string> = {
   haiku: "The Intern",
 };
 
-export const MAX_DEPTH = 3;
-export const MAX_AGENTS = 30;
+export { default as config } from "./config";
+import cfg from "./config";
+export const MAX_DEPTH = cfg.maxDepth;
+export const MAX_AGENTS = cfg.maxAgents;
 
 export type MissionMode =
   | "generalist"

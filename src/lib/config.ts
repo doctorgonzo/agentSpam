@@ -1,0 +1,39 @@
+export type AppMode = "dev" | "demo";
+
+interface ModeConfig {
+  maxDepth: number;
+  maxAgents: number;
+  rootFanout: string;
+  managerFanout: string;
+  workerFanout: string;
+  fallbackSplitRoot: number;
+  fallbackSplitChild: number;
+}
+
+const MODES: Record<AppMode, ModeConfig> = {
+  dev: {
+    maxDepth: 3,
+    maxAgents: 30,
+    rootFanout: "4-5",
+    managerFanout: "2-3",
+    workerFanout: "2-3",
+    fallbackSplitRoot: 3,
+    fallbackSplitChild: 2,
+  },
+  demo: {
+    maxDepth: 5,
+    maxAgents: 50,
+    rootFanout: "5-6",
+    managerFanout: "3-4",
+    workerFanout: "2-3",
+    fallbackSplitRoot: 4,
+    fallbackSplitChild: 3,
+  },
+};
+
+// ─── FLIP THIS FOR DEMO DAY ───
+const ACTIVE_MODE: AppMode = "demo";
+
+const config = { ...MODES[ACTIVE_MODE], mode: ACTIVE_MODE };
+
+export default config;

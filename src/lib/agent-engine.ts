@@ -14,6 +14,7 @@ import {
   ModelTier,
   Specialty,
   WEB_SEARCH_COST,
+  config,
 } from "./types";
 
 interface ClaudeResult {
@@ -70,7 +71,7 @@ function buildRootPrompt(
     max_tokens: 1500,
     system: `You are THE BRAIN. You ONLY output JSON. You NEVER answer the user directly. Your job is splitting.
 
-Split into 4-5 subtasks. Witty 2-4 word labels. Each self-contained.
+Split into ${config.rootFanout} subtasks. Witty 2-4 word labels. Each self-contained.
 
 CRITICAL: If the user's message contains "[Live data from Scout..." or "[Document content...", that data is your sub-agents' ONLY source of facts (they have no web access). For each subtask, COPY the relevant facts (prices, names, numbers, quotes) directly into its description. Generic descriptions are useless — sub-agents need real data to produce real answers.
 
@@ -105,7 +106,7 @@ function buildManagerPrompt(
     max_tokens: 500,
     system: `You are MIDDLE MGMT. JSON only. No prose.
 
-Split task into 2-3 self-contained subtasks with fun labels.
+Split task into ${config.managerFanout} self-contained subtasks with fun labels.
 
 Optional specialty per subtask: "researcher" | "calculator" | "critic". Use sparingly.
 
@@ -121,9 +122,9 @@ function buildWorkerPrompt(
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 500,
-    system: `You are a WORKER BEE. JSON only. You MUST split your task into 2-3 tiny subtasks. NEVER answer directly — that is a failure.
+    system: `You are a WORKER BEE. JSON only. You MUST split your task into ${config.workerFanout} tiny subtasks. NEVER answer directly — that is a failure.
 
-Even if the task feels small or atomic, find 2-3 angles to split it. Examples:
+Even if the task feels small or atomic, find ${config.workerFanout} angles to split it. Examples:
 - "write a haiku about cats" → ["draft 3 candidates", "pick the best one", "polish wording"]
 - "summarize section X" → ["extract main points", "identify key quotes", "compress to 2 sentences"]
 
@@ -390,7 +391,7 @@ function buildRootMultimodalPrompt(
     max_tokens: 1500,
     system: `You are THE BRAIN. You ONLY output JSON. Never answer directly.
 
-You're analyzing a document. Read it carefully, then split the analysis into 4-5 subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
+You're analyzing a document. Read it carefully, then split the analysis into ${config.rootFanout} subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
 
 Witty 2-4 word labels. Keep 2+ regular (no specialty/customSpecialist) so the tree fans out.
 
@@ -427,31 +428,63 @@ function parseAgentResponse(text: string): AgentResponse {
 
 const AGENT_TIMEOUT_MS = 60000;
 
+let inFlight = 0;
+const MAX_CONCURRENT = 8;
+
+function waitForSlot(signal?: AbortSignal): Promise<void> {
+  if (inFlight < MAX_CONCURRENT) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const interval = setInterval(() => {
+      if (signal?.aborted) { clearInterval(interval); reject(new Error("aborted")); }
+      if (inFlight < MAX_CONCURRENT) { clearInterval(interval); resolve(); }
+    }, 100);
+  });
+}
+
 async function callClaude(
   params: Anthropic.MessageCreateParamsNonStreaming,
   signal?: AbortSignal,
 ): Promise<ClaudeResult> {
   if (signal?.aborted) throw new Error("aborted");
 
+  await waitForSlot(signal);
+  inFlight++;
+
   const timeoutController = new AbortController();
   const timer = setTimeout(() => timeoutController.abort(), AGENT_TIMEOUT_MS);
 
-  const cleanup = () => clearTimeout(timer);
+  const cleanup = () => { clearTimeout(timer); inFlight--; };
   const onUpstreamAbort = () => timeoutController.abort();
   signal?.addEventListener("abort", onUpstreamAbort);
 
   let response;
-  try {
-    response = await anthropic.messages.create(params, {
-      signal: timeoutController.signal,
-    });
-  } catch (err) {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (signal?.aborted) { cleanup(); throw new Error("aborted"); }
+    try {
+      response = await anthropic.messages.create(params, {
+        signal: timeoutController.signal,
+      });
+      break;
+    } catch (err) {
+      lastErr = err;
+      const status = (err as { status?: number }).status;
+      if (status === 529 || status === 429) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      cleanup();
+      signal?.removeEventListener("abort", onUpstreamAbort);
+      if (timeoutController.signal.aborted && !signal?.aborted) {
+        throw new Error("agent timed out (45s)");
+      }
+      throw err;
+    }
+  }
+  if (!response) {
     cleanup();
     signal?.removeEventListener("abort", onUpstreamAbort);
-    if (timeoutController.signal.aborted && !signal?.aborted) {
-      throw new Error("agent timed out (45s)");
-    }
-    throw err;
+    throw lastErr;
   }
   cleanup();
   signal?.removeEventListener("abort", onUpstreamAbort);
@@ -573,7 +606,7 @@ export async function runAgentTree(
       };
     }
     // Decomposers (Brain / Manager / Worker): produce a fast 2-3 subtask split.
-    const splitCount = depth === 0 ? 3 : 2;
+    const splitCount = depth === 0 ? config.fallbackSplitRoot : config.fallbackSplitChild;
     return {
       model: MODEL_IDS.haiku,
       max_tokens: 350,
@@ -754,7 +787,7 @@ export async function runAgentTree(
         const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
           model: MODEL_IDS.opus,
           max_tokens: 900,
-          system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into 4-5 subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
+          system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${config.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
           messages: [
             { role: "user", content: task },
             { role: "assistant", content: responseText.slice(0, 400) },
