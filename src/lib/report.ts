@@ -71,6 +71,87 @@ export function generateHtmlReport(data: ReportData): string {
     return aNum - bNum;
   });
 
+  // Find debate topics and group their debaters/judge.
+  const debateTopics = ordered.filter((a) => a.debateRole === "topic");
+  const debateAgentIds = new Set<string>();
+  const debateBlocks = debateTopics.map((topic) => {
+    debateAgentIds.add(topic.id);
+    const children = ordered.filter((a) => a.parentId === topic.id);
+    children.forEach((c) => debateAgentIds.add(c.id));
+    const rounds: { round: number; bull: AgentNode | null; bear: AgentNode | null }[] = [];
+    const seenRounds = new Set<number>();
+    children
+      .filter((c) => c.debateRole === "bull" || c.debateRole === "bear")
+      .forEach((c) => {
+        const r = c.debateRound ?? 0;
+        seenRounds.add(r);
+      });
+    Array.from(seenRounds)
+      .sort((a, b) => a - b)
+      .forEach((r) => {
+        const bull = children.find((c) => c.debateRole === "bull" && c.debateRound === r) ?? null;
+        const bear = children.find((c) => c.debateRole === "bear" && c.debateRound === r) ?? null;
+        rounds.push({ round: r, bull, bear });
+      });
+    const judge = children.find((c) => c.debateRole === "judge") ?? null;
+    return { topic, rounds, judge };
+  });
+
+  const debateHtml = debateBlocks
+    .map((block, idx) => {
+      const issueNum = String(idx + 1).padStart(2, "0");
+      const roundsHtml = block.rounds
+        .map(
+          (r) => `
+        <div class="zine-round">
+          <div class="zine-round-label">ROUND ${r.round}</div>
+          <div class="zine-vs-grid">
+            <div class="zine-card zine-bull">
+              <div class="zine-card-stamp">PRO</div>
+              <div class="zine-card-name">${escapeHtml(r.bull?.customSpecialist?.emoji ?? "")} THE BULL</div>
+              <div class="zine-card-body prose">${renderMarkdown(r.bull?.result ?? "(silence)")}</div>
+            </div>
+            <div class="zine-vs">VS</div>
+            <div class="zine-card zine-bear">
+              <div class="zine-card-stamp">CON</div>
+              <div class="zine-card-name">${escapeHtml(r.bear?.customSpecialist?.emoji ?? "")} THE BEAR</div>
+              <div class="zine-card-body prose">${renderMarkdown(r.bear?.result ?? "(silence)")}</div>
+            </div>
+          </div>
+        </div>`,
+        )
+        .join("");
+      const judgeHtml = block.judge
+        ? `
+        <div class="zine-verdict">
+          <div class="zine-verdict-stamp">★ VERDICT ★</div>
+          <div class="zine-verdict-name">THE JUDGE RULES</div>
+          <div class="zine-verdict-body prose">${renderMarkdown(block.judge.result ?? "")}</div>
+        </div>`
+        : "";
+      return `
+      <section class="zine">
+        <div class="zine-masthead">
+          <div class="zine-mast-left">
+            <div class="zine-mast-title">THE DECOMPOSED</div>
+            <div class="zine-mast-sub">a debate zine // photocopied at 4am</div>
+          </div>
+          <div class="zine-mast-right">
+            <div class="zine-issue">ISSUE #${issueNum}</div>
+            <div class="zine-price">FREE / STEAL THIS</div>
+          </div>
+        </div>
+        <div class="zine-topic">
+          <div class="zine-topic-kicker">TONIGHT'S BEEF →</div>
+          <div class="zine-topic-text">${escapeHtml(block.topic.label.replace(/^[^\s]+\s/, ""))}</div>
+        </div>
+        ${roundsHtml}
+        ${judgeHtml}
+        <div class="zine-footer">END / DESTROY ALL HIERARCHIES / agentSpam zine #${issueNum}</div>
+      </section>`;
+    })
+    .join("\n");
+
   const treeHtml = ordered
     .map((a) => {
       const indent = "  ".repeat(a.depth);
@@ -80,6 +161,7 @@ export function generateHtmlReport(data: ReportData): string {
     .join("\n");
 
   const agentsHtml = ordered
+    .filter((a) => !debateAgentIds.has(a.id))
     .map((a) => {
       const k = agentKindLabel(a);
       return `
@@ -412,10 +494,209 @@ export function generateHtmlReport(data: ReportData): string {
   }
   footer .accent { color: var(--purple); font-weight: 600; }
 
+  /* ─── PUNK ZINE DEBATE SECTION ─── */
+  .zine {
+    background: #fff;
+    color: #000;
+    border: 3px solid #000;
+    padding: 0;
+    margin: 24px 0 40px;
+    font-family: "Helvetica Neue", "Arial Black", Impact, sans-serif;
+    position: relative;
+    box-shadow: 6px 6px 0 #000, 12px 12px 0 #e11d48;
+  }
+  .zine-masthead {
+    background: #000;
+    color: #fff;
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 3px solid #000;
+  }
+  .zine-mast-title {
+    font-size: 30px;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    text-transform: uppercase;
+    line-height: 0.95;
+    color: #fff;
+  }
+  .zine-mast-sub {
+    font-size: 11px;
+    color: #e11d48;
+    font-style: italic;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
+  }
+  .zine-mast-right { text-align: right; }
+  .zine-issue {
+    font-size: 13px;
+    font-weight: 900;
+    background: #e11d48;
+    color: #fff;
+    padding: 3px 8px;
+    display: inline-block;
+    transform: rotate(2deg);
+  }
+  .zine-price {
+    font-size: 10px;
+    color: #fff;
+    margin-top: 6px;
+    text-decoration: underline;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .zine-topic {
+    padding: 18px 18px 6px;
+    border-bottom: 2px dashed #000;
+    background: repeating-linear-gradient(
+      135deg,
+      #fff 0 14px,
+      #fff7ed 14px 16px
+    );
+  }
+  .zine-topic-kicker {
+    font-size: 11px;
+    font-weight: 900;
+    color: #e11d48;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .zine-topic-text {
+    font-size: 22px;
+    font-weight: 900;
+    color: #000;
+    margin-top: 4px;
+    line-height: 1.15;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+  }
+  .zine-round {
+    padding: 22px 18px;
+    border-bottom: 2px solid #000;
+  }
+  .zine-round-label {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 900;
+    background: #000;
+    color: #fff;
+    padding: 4px 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 14px;
+    transform: rotate(-1deg);
+  }
+  .zine-vs-grid {
+    display: grid;
+    grid-template-columns: 1fr 50px 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .zine-card {
+    border: 2px solid #000;
+    padding: 12px 14px;
+    background: #fff;
+    position: relative;
+  }
+  .zine-bull {
+    background: #ffe4e6;
+    transform: rotate(-0.4deg);
+  }
+  .zine-bear {
+    background: #dbeafe;
+    transform: rotate(0.4deg);
+  }
+  .zine-card-stamp {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #000;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    padding: 3px 8px;
+    transform: rotate(8deg);
+    letter-spacing: 0.1em;
+  }
+  .zine-bull .zine-card-stamp { background: #e11d48; }
+  .zine-bear .zine-card-stamp { background: #1d4ed8; }
+  .zine-card-name {
+    font-size: 14px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 4px;
+  }
+  .zine-card-body {
+    font-family: "Georgia", "Times New Roman", serif;
+    font-size: 13px;
+    color: #1a1a1f;
+    line-height: 1.5;
+  }
+  .zine-card-body p { margin: 6px 0; }
+  .zine-card-body strong { background: #fef08a; padding: 0 2px; }
+  .zine-vs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: 900;
+    color: #e11d48;
+    text-shadow: 2px 2px 0 #000;
+    transform: rotate(-6deg);
+    letter-spacing: -0.05em;
+  }
+  .zine-verdict {
+    padding: 24px 18px;
+    background: #fef9c3;
+    border-top: 4px double #000;
+  }
+  .zine-verdict-stamp {
+    display: inline-block;
+    background: #000;
+    color: #facc15;
+    padding: 5px 12px;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    transform: rotate(-2deg);
+    margin-bottom: 10px;
+  }
+  .zine-verdict-name {
+    font-size: 22px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    border-bottom: 3px solid #000;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+  }
+  .zine-verdict-body {
+    font-family: "Georgia", "Times New Roman", serif;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .zine-verdict-body p { margin: 8px 0; }
+  .zine-footer {
+    background: #000;
+    color: #fff;
+    padding: 8px 18px;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
   @media print {
     body { background: #fff; }
     .doc { padding: 24px 32px; max-width: none; }
     .agent { page-break-inside: avoid; }
+    .zine { page-break-inside: avoid; }
     h2 { page-break-after: avoid; }
     .roi { page-break-inside: avoid; }
     .synthesis { page-break-inside: avoid; }
@@ -501,6 +782,8 @@ ${treeHtml}
 
   <h2>Final Synthesis</h2>
   <div class="synthesis"><div class="prose">${synthesisHtml}</div></div>
+
+  ${debateBlocks.length > 0 ? `<h2>The Debate Zine</h2>${debateHtml}` : ""}
 
   <h2>Agent Details</h2>
   ${agentsHtml}
