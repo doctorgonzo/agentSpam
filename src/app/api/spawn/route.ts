@@ -5,7 +5,7 @@ export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const body: SpawnRequest = await req.json();
-  const { prompt, file, files, mode, role, memory } = body;
+  const { prompt, file, files, mode, role, memory, appMode } = body;
 
   // Normalize to a files array — legacy single `file` still works.
   const allFiles = files && files.length > 0 ? files : file ? [file] : [];
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
       };
 
       try {
-        await runAgentTree(prompt, allFiles, emit, abort.signal, mode, role, memory);
+        await runAgentTree(prompt, allFiles, emit, abort.signal, mode, role, memory, appMode);
       } catch (err) {
         if (!abort.signal.aborted) {
           const msg = err instanceof Error ? err.message : "Engine failed";

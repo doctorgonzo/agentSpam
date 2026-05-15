@@ -1,6 +1,6 @@
 export type AppMode = "dev" | "demo";
 
-interface ModeConfig {
+export interface ModeConfig {
   maxDepth: number;
   maxAgents: number;
   rootFanout: string;
@@ -12,7 +12,7 @@ interface ModeConfig {
   debateRounds: number;
 }
 
-const MODES: Record<AppMode, ModeConfig> = {
+export const MODES: Record<AppMode, ModeConfig> = {
   dev: {
     maxDepth: 3,
     maxAgents: 30,
@@ -40,8 +40,13 @@ const MODES: Record<AppMode, ModeConfig> = {
 // Read from NEXT_PUBLIC_AGENT_MODE env var so local can be "demo" via
 // .env.local while prod defaults to "dev". Falls back to dev if unset.
 const envMode = process.env.NEXT_PUBLIC_AGENT_MODE;
-const ACTIVE_MODE: AppMode = envMode === "demo" ? "demo" : "dev";
+export const DEFAULT_MODE: AppMode = envMode === "demo" ? "demo" : "dev";
 
-const config = { ...MODES[ACTIVE_MODE], mode: ACTIVE_MODE };
+const config = { ...MODES[DEFAULT_MODE], mode: DEFAULT_MODE };
+
+export function resolveConfig(override?: AppMode | null) {
+  const m: AppMode = override ?? DEFAULT_MODE;
+  return { ...MODES[m], mode: m };
+}
 
 export default config;

@@ -118,6 +118,28 @@ export default function Home() {
   const [lastFileCount, setLastFileCount] = useState(0);
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
   const [showMemory, setShowMemory] = useState(false);
+  const [appMode, setAppMode] = useState<"dev" | "demo">("dev");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("agentSpam.appMode");
+      if (saved === "demo" || saved === "dev") setAppMode(saved);
+    } catch {
+      // localStorage might be unavailable
+    }
+  }, []);
+
+  const flipAppMode = useCallback(() => {
+    setAppMode((prev) => {
+      const next = prev === "demo" ? "dev" : "demo";
+      try {
+        localStorage.setItem("agentSpam.appMode", next);
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
   const agentsRef = useRef<Map<string, AgentNode>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -283,7 +305,7 @@ export default function Home() {
         const res = await fetch("/api/spawn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, files, mode, role, memory: memoryBlock }),
+          body: JSON.stringify({ prompt, files, mode, role, memory: memoryBlock, appMode }),
           signal: ac.signal,
         });
 
@@ -358,6 +380,11 @@ export default function Home() {
                         name: event.name,
                       },
                     });
+                  } else if (existing && existing.depth === 0) {
+                    // Brain self-naming: append the picked name to the label.
+                    updateAgent(event.id, {
+                      label: `The Brain · ${event.name}`,
+                    });
                   }
                   break;
                 }
@@ -418,7 +445,7 @@ export default function Home() {
 
       setIsRunning(false);
     },
-    [updateAgent],
+    [updateAgent, appMode],
   );
 
   const hasAgents = agents.size > 0;
@@ -438,6 +465,19 @@ export default function Home() {
             <span className="text-white/20 text-xs hidden sm:inline">
               one brain, infinite idiots
             </span>
+            <button
+              type="button"
+              onClick={flipAppMode}
+              disabled={isRunning}
+              title={`Switch to ${appMode === "demo" ? "dev" : "demo"} mode`}
+              className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-full border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                appMode === "demo"
+                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25"
+                  : "bg-white/5 border-white/15 text-white/60 hover:bg-white/10"
+              }`}
+            >
+              {appMode === "demo" ? "● demo" : "○ dev"}
+            </button>
           </div>
           <div className="flex items-center gap-3 text-xs">
             {(isRunning || totalCost > 0) && (

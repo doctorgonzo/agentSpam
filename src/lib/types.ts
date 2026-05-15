@@ -72,6 +72,7 @@ export interface SpawnRequest {
   mode?: MissionMode;
   role?: string; // worker role id for the headcount calculator
   memory?: string; // pre-formatted memory block for the Brain
+  appMode?: "dev" | "demo"; // override server-default config for this run
 }
 
 export const MODEL_IDS: Record<ModelTier, string> = {

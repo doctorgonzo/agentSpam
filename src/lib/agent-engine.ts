@@ -4,8 +4,6 @@ import {
   AgentNode,
   CustomSpecialist,
   FileAttachment,
-  MAX_AGENTS,
-  MAX_DEPTH,
   MISSION_MODES,
   MODEL_IDS,
   MODEL_LABELS,
@@ -14,8 +12,8 @@ import {
   ModelTier,
   Specialty,
   WEB_SEARCH_COST,
-  config,
 } from "./types";
+import { resolveConfig } from "./config";
 
 interface ClaudeResult {
   text: string;
@@ -64,14 +62,15 @@ function getModeAddendum(mode?: MissionMode): string {
 
 function buildRootPrompt(
   userPrompt: string,
-  mode?: MissionMode,
+  mode: MissionMode | undefined,
+  cfg: { rootFanout: string },
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.opus,
     max_tokens: 1500,
     system: `You are THE BRAIN. You ONLY output JSON. You NEVER answer the user directly. Your job is splitting.
 
-Split into ${config.rootFanout} subtasks. Witty 2-4 word labels. Each self-contained.
+Split into ${cfg.rootFanout} subtasks. Witty 2-4 word labels. Each self-contained.
 
 CRITICAL: If the user's message contains "[Live data from Scout..." or "[Document content...", that data is your sub-agents' ONLY source of facts (they have no web access). For each subtask, COPY the relevant facts (prices, names, numbers, quotes) directly into its description. Generic descriptions are useless — sub-agents need real data to produce real answers.
 
@@ -100,13 +99,14 @@ OUTPUT FORMAT — nothing else:
 
 function buildManagerPrompt(
   task: string,
+  cfg: { managerFanout: string },
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 500,
     system: `You are MIDDLE MGMT. JSON only. No prose.
 
-Split task into ${config.managerFanout} self-contained subtasks with fun labels.
+Split task into ${cfg.managerFanout} self-contained subtasks with fun labels.
 
 Optional specialty per subtask: "researcher" | "calculator" | "critic". Use sparingly.
 
@@ -118,13 +118,14 @@ JSON now:
 
 function buildWorkerPrompt(
   task: string,
+  cfg: { workerFanout: string },
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 500,
-    system: `You are a WORKER BEE. JSON only. You MUST split your task into ${config.workerFanout} tiny subtasks. NEVER answer directly — that is a failure.
+    system: `You are a WORKER BEE. JSON only. You MUST split your task into ${cfg.workerFanout} tiny subtasks. NEVER answer directly — that is a failure.
 
-Even if the task feels small or atomic, find ${config.workerFanout} angles to split it. Examples:
+Even if the task feels small or atomic, find ${cfg.workerFanout} angles to split it. Examples:
 - "write a haiku about cats" → ["draft 3 candidates", "pick the best one", "polish wording"]
 - "summarize section X" → ["extract main points", "identify key quotes", "compress to 2 sentences"]
 
@@ -221,6 +222,23 @@ function buildNamePickerPrompt(
       {
         role: "user",
         content: `Your role: ${spec.role}\nYour emoji: ${spec.emoji}`,
+      },
+    ],
+  };
+}
+
+function buildBrainNamerPrompt(
+  taskPrompt: string,
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: MODEL_IDS.haiku,
+    max_tokens: 20,
+    system:
+      "You are THE BRAIN, naming yourself for this specific task. Pick a vivid 1-2 word epithet that fits the task's vibe. Examples for different tasks: 'The Marrow', 'Patient Zero', 'The Wretched Compiler', 'Old Smoke', 'Cathedral Mode', 'The Pulse'. Be creative, slightly menacing or poetic. Output ONLY the name. No 'The Brain'. No quotes. No explanation.",
+    messages: [
+      {
+        role: "user",
+        content: `Task: ${taskPrompt.slice(0, 500)}`,
       },
     ],
   };
@@ -350,7 +368,8 @@ function buildDocExtractorPrompt(
 function buildRootMultimodalPrompt(
   userPrompt: string,
   file: FileAttachment,
-  mode?: MissionMode,
+  mode: MissionMode | undefined,
+  cfg: { rootFanout: string },
 ): Anthropic.MessageCreateParamsNonStreaming {
   const content: Anthropic.MessageCreateParamsNonStreaming["messages"][0]["content"] =
     [];
@@ -391,7 +410,7 @@ function buildRootMultimodalPrompt(
     max_tokens: 1500,
     system: `You are THE BRAIN. You ONLY output JSON. Never answer directly.
 
-You're analyzing a document. Read it carefully, then split the analysis into ${config.rootFanout} subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
+You're analyzing a document. Read it carefully, then split the analysis into ${cfg.rootFanout} subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
 
 Witty 2-4 word labels. Keep 2+ regular (no specialty/customSpecialist) so the tree fans out.
 
@@ -616,8 +635,10 @@ export async function runAgentTree(
   mode?: MissionMode,
   _role?: string, // unused server-side; report uses it client-side
   memory?: string,
+  appMode?: "dev" | "demo",
 ): Promise<void> {
   agentCounter = 0;
+  const cfg = resolveConfig(appMode);
 
   let totalCost = 0;
   let totalOutputTokens = 0;
@@ -695,7 +716,7 @@ export async function runAgentTree(
     customSpecialist?: CustomSpecialist,
   ): Anthropic.MessageCreateParamsNonStreaming {
     // Specialists / leaves / custom: produce a brief answer.
-    if (specialty || customSpecialist || depth >= MAX_DEPTH) {
+    if (specialty || customSpecialist || depth >= cfg.maxDepth) {
       const persona = customSpecialist
         ? `You are ${customSpecialist.name ?? "a specialist"} ${customSpecialist.emoji}. Role: ${customSpecialist.role}.`
         : specialty
@@ -709,7 +730,7 @@ export async function runAgentTree(
       };
     }
     // Decomposers (Brain / Manager / Worker): produce a fast 2-3 subtask split.
-    const splitCount = depth === 0 ? config.fallbackSplitRoot : config.fallbackSplitChild;
+    const splitCount = depth === 0 ? cfg.fallbackSplitRoot : cfg.fallbackSplitChild;
     const hasContext =
       task.includes("[Document content") ||
       task.includes("[Live data from Scout") ||
@@ -889,7 +910,7 @@ export async function runAgentTree(
 
     let lastBull = "";
     let lastBear = "";
-    for (let round = 1; round <= config.debateRounds; round++) {
+    for (let round = 1; round <= cfg.debateRounds; round++) {
       if (signal?.aborted) {
         emit({ type: "agent_complete", id: debateId, result: "[stopped mid-debate]" });
         return { label: debateLabel, result: "[stopped mid-debate]" };
@@ -928,7 +949,7 @@ export async function runAgentTree(
       const verdict = await call({
         model: MODEL_IDS.opus,
         max_tokens: 600,
-        system: `You are THE JUDGE — you watched a ${config.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side. End with a clear ruling. Be decisive.`,
+        system: `You are THE JUDGE — you watched a ${cfg.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side. End with a clear ruling. Be decisive.`,
         messages: [
           {
             role: "user",
@@ -960,7 +981,7 @@ export async function runAgentTree(
       return { label, result: "[stopped]" };
     }
 
-    if (agentCounter >= MAX_AGENTS) {
+    if (agentCounter >= cfg.maxAgents) {
       return { label, result: "[max agents reached]" };
     }
 
@@ -980,6 +1001,23 @@ export async function runAgentTree(
     };
 
     emit({ type: "agent_spawned", agent: node });
+
+    // The Brain picks an evocative one-off name for itself, fitted to the
+    // task. Cheap haiku call, shows up as a label suffix.
+    if (depth === 0 && !specialty && !customSpecialist) {
+      try {
+        const picked = (await call(buildBrainNamerPrompt(task)))
+          .trim()
+          .replace(/^["']|["']$/g, "")
+          .replace(/^the\s+brain[,\s]*/i, "")
+          .slice(0, 30);
+        if (picked) {
+          emit({ type: "agent_named", id, name: picked });
+        }
+      } catch {
+        // ignore — brain stays as plain "The Brain", no big deal
+      }
+    }
 
     // Custom specialists pick their own name in a tiny haiku call before
     // the main task. Fast (~1s, cheap), and the name appears immediately on
@@ -1007,7 +1045,7 @@ export async function runAgentTree(
       // Answer-producing agents (leaves + specialists) get the shared doc/scout
       // context inlined so facts survive even if upstream decomposers dropped them.
       const answerTask =
-        sharedContext && (specialty || customSpecialist || depth >= MAX_DEPTH)
+        sharedContext && (specialty || customSpecialist || depth >= cfg.maxDepth)
           ? `${task}\n\n[Source material to draw on]:\n${sharedContext}`
           : task;
 
@@ -1020,15 +1058,15 @@ export async function runAgentTree(
       } else if (specialty === "critic") {
         params = buildCriticPrompt(answerTask, criticContext || []);
       } else if (depth === 0 && activeFile) {
-        params = buildRootMultimodalPrompt(task, activeFile, mode);
+        params = buildRootMultimodalPrompt(task, activeFile, mode, cfg);
       } else if (depth === 0) {
-        params = buildRootPrompt(task, mode);
-      } else if (depth >= MAX_DEPTH) {
+        params = buildRootPrompt(task, mode, cfg);
+      } else if (depth >= cfg.maxDepth) {
         params = buildLeafPrompt(answerTask);
       } else if (depth === 1) {
-        params = buildManagerPrompt(task);
+        params = buildManagerPrompt(task, cfg);
       } else {
-        params = buildWorkerPrompt(task);
+        params = buildWorkerPrompt(task, cfg);
       }
 
       const fallbackParams = buildFallbackParams(
@@ -1096,7 +1134,7 @@ export async function runAgentTree(
         const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
           model: MODEL_IDS.opus,
           max_tokens: 900,
-          system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${config.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
+          system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${cfg.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
           messages: [
             { role: "user", content: task },
             { role: "assistant", content: responseText.slice(0, 400) },
@@ -1110,12 +1148,12 @@ export async function runAgentTree(
         parsed = parseAgentResponse(responseText);
       }
 
-      // Non-root, non-specialist agents at depth < MAX_DEPTH MUST also decompose
-      // so the tree always has leaf interns at depth = MAX_DEPTH. If a Manager
+      // Non-root, non-specialist agents at depth < cfg.maxDepth MUST also decompose
+      // so the tree always has leaf interns at depth = cfg.maxDepth. If a Manager
       // or Worker answered directly, retry once.
       if (
         depth > 0 &&
-        depth < MAX_DEPTH &&
+        depth < cfg.maxDepth &&
         !specialty &&
         !customSpecialist &&
         parsed.type !== "subtasks"
@@ -1137,7 +1175,7 @@ export async function runAgentTree(
         parsed = parseAgentResponse(responseText);
       }
 
-      if (parsed.type === "subtasks" && depth < MAX_DEPTH) {
+      if (parsed.type === "subtasks" && depth < cfg.maxDepth) {
         if (signal?.aborted) {
           emit({ type: "agent_complete", id, result: "[stopped]" });
           return { label, result: "[stopped]" };
@@ -1186,7 +1224,7 @@ export async function runAgentTree(
         // In demo mode, convert one regular subtask into a 3-round debate.
         // Picks the first regular (non-specialty, non-custom) child.
         const debateIdx =
-          depth === 0 && config.enableDebate
+          depth === 0 && cfg.enableDebate
             ? nonCritics.findIndex((s) => !s.specialty && !s.customSpecialist)
             : -1;
         const debateTopic = debateIdx >= 0 ? nonCritics[debateIdx] : null;
