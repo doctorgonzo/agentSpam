@@ -121,6 +121,7 @@ export default function Home() {
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
   const [showMemory, setShowMemory] = useState(false);
   const [appMode, setAppMode] = useState<"dev" | "demo">("dev");
+  const [actionsDismissed, setActionsDismissed] = useState(false);
   const [actions, setActions] = useState<ProposedAction[]>([]);
 
   useEffect(() => {
@@ -286,6 +287,7 @@ export default function Home() {
       setIsRunning(true);
       setFinalResult(null);
       setActions([]);
+      setActionsDismissed(false);
       setSelectedAgentId(null);
       setScoutStatus("idle");
       setScoutFindings(null);
@@ -698,8 +700,16 @@ export default function Home() {
       {/* Floating actions card: visible whenever proposed actions exist but
           the result modal is closed (e.g. actions streamed in mid-run, or the
           user dismissed the modal but wants to fire actions later). */}
-      {!showResult && actions.length > 0 && (
+      {!showResult && actions.length > 0 && !actionsDismissed && (
         <div className="fixed bottom-4 right-4 z-[80] w-[360px] max-h-[70vh] overflow-y-auto bg-zinc-900/95 backdrop-blur-md border border-purple-500/30 rounded-2xl shadow-2xl shadow-purple-500/10 animate-fade-in">
+          <button
+            type="button"
+            onClick={() => setActionsDismissed(true)}
+            aria-label="Dismiss proposed actions"
+            className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/15 border border-white/10 text-white/60 hover:text-white text-sm transition-all z-10"
+          >
+            ✕
+          </button>
           <div className="p-3">
             <ActionsPanel actions={actions} />
           </div>
