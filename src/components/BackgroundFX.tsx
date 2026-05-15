@@ -99,9 +99,36 @@ export default function BackgroundFX() {
       style={{ zIndex: 0 }}
       aria-hidden
     >
-      <div className="bgfx-mesh-a" />
-      <div className="bgfx-mesh-b" />
-      <div className="bgfx-mesh-c" />
+      <div
+        className="absolute bgfx-mesh-a"
+        style={{
+          inset: "-20%",
+          background:
+            "radial-gradient(circle at 20% 30%, rgba(168,85,247,1) 0%, rgba(168,85,247,0.3) 25%, transparent 55%)",
+          filter: "blur(80px)",
+          willChange: "transform",
+        }}
+      />
+      <div
+        className="absolute bgfx-mesh-b"
+        style={{
+          inset: "-20%",
+          background:
+            "radial-gradient(circle at 80% 70%, rgba(217,70,239,0.9) 0%, rgba(217,70,239,0.25) 25%, transparent 55%)",
+          filter: "blur(80px)",
+          willChange: "transform",
+        }}
+      />
+      <div
+        className="absolute bgfx-mesh-c"
+        style={{
+          inset: "-20%",
+          background:
+            "radial-gradient(circle at 60% 20%, rgba(59,130,246,0.8) 0%, rgba(59,130,246,0.2) 25%, transparent 55%)",
+          filter: "blur(80px)",
+          willChange: "transform",
+        }}
+      />
       <div
         ref={glowRef}
         className="absolute pointer-events-none"
@@ -112,7 +139,7 @@ export default function BackgroundFX() {
           height: 600,
           transform: "translate(-50%, -50%)",
           background:
-            "radial-gradient(circle, rgba(168,85,247,0.22) 0%, rgba(168,85,247,0) 60%)",
+            "radial-gradient(circle, rgba(168,85,247,0.3) 0%, rgba(168,85,247,0) 60%)",
         }}
       />
       <canvas ref={canvasRef} className="absolute inset-0" />
