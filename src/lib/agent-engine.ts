@@ -285,19 +285,19 @@ function buildScoutPrompt(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.opus,
-    max_tokens: 2000,
+    max_tokens: 1200,
     system: `You are THE SCOUT — a recon agent with web search. The sub-agents downstream have NO internet access, so YOU are their only source of live data. They will rely entirely on what you return.
 
 Look at the user's task:
 
-- If it needs CURRENT data (news, prices, stocks, dates, real-world facts, statistics, anything time-sensitive), DO MULTIPLE SEARCHES to gather everything needed. Be thorough — search 4-6 times if the task is complex. Return a structured fact dump with concrete numbers, names, dates, and sources. Format as markdown bullets/sub-bullets, organized by topic.
+- If it needs CURRENT data (news, prices, stocks, dates, real-world facts, statistics, anything time-sensitive), do 1-2 targeted searches. Be efficient — pick the queries that yield the most facts per search. Return a structured fact dump with concrete numbers, names, dates, and sources. Format as markdown bullets/sub-bullets, organized by topic.
 - If it does NOT need live data (general questions, creative tasks, opinions, code), respond with exactly: NONE
 
 Quality bar: if a sub-agent reads your output, they should have enough hard facts to answer specifically — never generically. Include numbers and proper names always.
 
 Do not explain. Do not preamble. Facts or NONE.`,
     messages: [{ role: "user", content: userPrompt }],
-    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 4 }],
+    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 2 }],
   };
 }
 
