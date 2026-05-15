@@ -874,7 +874,8 @@ export async function runAgentTree(
         specialty,
         customSpecialist,
       );
-      let responseText = await callOrFallback(params, fallbackParams, 20000);
+      const deadline = depth === 0 ? 45000 : depth === 1 ? 25000 : 15000;
+      let responseText = await callOrFallback(params, fallbackParams, deadline);
       let parsed = parseAgentResponse(responseText);
 
       // Specialists (premade or custom) always answer directly — they never decompose
