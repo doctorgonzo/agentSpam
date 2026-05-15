@@ -32,7 +32,7 @@ const MODES: Record<AppMode, ModeConfig> = {
 };
 
 // ─── FLIP THIS FOR DEMO DAY ───
-const ACTIVE_MODE: AppMode = "demo";
+const ACTIVE_MODE: AppMode = "dev";
 
 const config = { ...MODES[ACTIVE_MODE], mode: ACTIVE_MODE };
 
