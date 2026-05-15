@@ -114,7 +114,9 @@ export type MissionMode =
   | "engineering"
   | "legal"
   | "support"
-  | "recruiter";
+  | "recruiter"
+  | "puzzle"
+  | "creative";
 
 export interface MissionModeConfig {
   id: MissionMode;
@@ -189,5 +191,21 @@ export const MISSION_MODES: MissionModeConfig[] = [
     description: "Candidate evaluation",
     brainAddendum:
       "DOMAIN: HR/recruiting. Frame subtasks around candidate skill match, experience depth, red flags, growth trajectory, and comparison-vs-bar. A 'critic' should call out bias, gaps, and unfounded assumptions in sibling evaluations.",
+  },
+  {
+    id: "puzzle",
+    label: "Puzzle Solver",
+    emoji: "\u{1F9E9}",
+    description: "Logic, riddles, lateral thinking",
+    brainAddendum:
+      "DOMAIN: Puzzles and logic. Frame subtasks around constraints, base cases, working backwards, lateral angles, and verification steps. Invent custom specialists who think differently — a pattern-spotter, a constraint-stripper, a contrarian who tries the inverse. A 'critic' MUST be included to test the solution against the original constraints.",
+  },
+  {
+    id: "creative",
+    label: "Creative Genius",
+    emoji: "\u{1F3A8}",
+    description: "Art, writing, photo critique",
+    brainAddendum:
+      "DOMAIN: Creative analysis. Frame subtasks around composition, emotional register, technical execution, cultural reference points, and what's missing. Invent custom specialists with strong aesthetic voices — a working artist, a brutal critic, a historian, a maximalist. NEVER hedge — creative opinions should be specific and stand behind a take.",
   },
 ];
