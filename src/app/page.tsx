@@ -263,6 +263,16 @@ export default function Home() {
                   break;
                 }
 
+                case "agent_escalated":
+                  updateAgent(event.id, { status: "thinking", model: event.to });
+                  thinkingSound();
+                  break;
+
+                case "agent_reviewing":
+                  updateAgent(event.id, { status: "thinking" });
+                  thinkingSound();
+                  break;
+
                 case "agent_error":
                   updateAgent(event.id, { status: "error" });
                   errorSound();

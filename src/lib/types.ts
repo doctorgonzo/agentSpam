@@ -40,6 +40,8 @@ export type AgentEvent =
   | { type: "agent_thinking"; id: string }
   | { type: "agent_complete"; id: string; result: string }
   | { type: "agent_named"; id: string; name: string }
+  | { type: "agent_escalated"; id: string; from: ModelTier; to: ModelTier; confidence: number }
+  | { type: "agent_reviewing"; id: string }
   | { type: "memory_gist"; prompt: string; gist: string; mode?: string }
   | { type: "agent_error"; id: string; error: string }
   | { type: "cost_update"; totalCost: number; humanMinutes: number }

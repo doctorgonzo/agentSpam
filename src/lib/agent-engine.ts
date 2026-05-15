@@ -143,7 +143,7 @@ function buildLeafPrompt(
     model: MODEL_IDS.haiku,
     max_tokens: 300,
     system:
-      "You are THE INTERN — one brain cell, one job. Do it in 1-3 sentences. Be direct and a little cheeky.",
+      "You are THE INTERN — one brain cell, one job. Do it in 1-3 sentences. Be direct and a little cheeky. End with [confidence: X/10].",
     messages: [{ role: "user", content: `Your one job: ${task}` }],
   };
 }
@@ -156,7 +156,7 @@ function buildResearcherPrompt(
     max_tokens: 800,
     system: `You are THE RESEARCHER — a specialist agent with web search. You hunt down hard facts.
 
-Use web search (max 2 searches) to find SPECIFIC data: numbers, names, dates, sources. Then return your findings in 3-6 tight bullet points with sources cited inline. No fluff, no preamble, no "I'll search for...". Just the facts and where they came from.`,
+Use web search (max 2 searches) to find SPECIFIC data: numbers, names, dates, sources. Then return your findings in 3-6 tight bullet points with sources cited inline. No fluff, no preamble, no "I'll search for...". Just the facts and where they came from. End with [confidence: X/10].`,
     messages: [{ role: "user", content: `Research task: ${task}` }],
     tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 2 }],
   };
@@ -170,7 +170,7 @@ function buildCalculatorPrompt(
     max_tokens: 500,
     system: `You are THE CALCULATOR — a specialist agent for numbers. You do math, percentages, comparisons, and projections with precision.
 
-Show your math step by step using markdown. Always state your assumptions. End with a single-line "Answer:" followed by the result. Be concise but exact — wrong numbers are unforgivable.`,
+Show your math step by step using markdown. Always state your assumptions. End with a single-line "Answer:" followed by the result. Be concise but exact — wrong numbers are unforgivable. End with [confidence: X/10].`,
     messages: [{ role: "user", content: `Calculation: ${task}` }],
   };
 }
@@ -186,7 +186,7 @@ function buildCustomSpecialistPrompt(
 
 Your role: ${spec.role}
 
-Stay in character. Be sharp, specific, concise. Output markdown. Lead with your strongest finding. No preamble.`,
+Stay in character. Be sharp, specific, concise. Output markdown. Lead with your strongest finding. No preamble. End with [confidence: X/10].`,
     messages: [{ role: "user", content: `Your task: ${task}` }],
   };
 }
@@ -442,6 +442,67 @@ function buildRetryPrompt(
       {
         role: "user",
         content: "That was not useful. Try again — real answer this time.",
+      },
+    ],
+  };
+}
+
+const CONFIDENCE_TAG = /\[confidence:\s*(\d+)\s*\/\s*10\]/i;
+
+function parseConfidence(text: string): { clean: string; confidence: number } {
+  const match = text.match(CONFIDENCE_TAG);
+  if (match) {
+    return {
+      clean: text.replace(match[0], "").trim(),
+      confidence: Math.min(10, Math.max(1, parseInt(match[1], 10))),
+    };
+  }
+  return { clean: text, confidence: 7 };
+}
+
+function escalateTier(tier: ModelTier): ModelTier {
+  if (tier === "haiku") return "sonnet";
+  return "opus";
+}
+
+function buildEscalationPrompt(
+  task: string,
+  previousAnswer: string,
+  newTier: ModelTier,
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: MODEL_IDS[newTier],
+    max_tokens: 600,
+    system:
+      "A weaker model attempted this task but rated itself low-confidence. You are a stronger model brought in to do better. Give a concrete, thorough answer. End with [confidence: X/10].",
+    messages: [
+      { role: "user", content: task },
+      { role: "assistant", content: previousAnswer.slice(0, 300) },
+      {
+        role: "user",
+        content:
+          "That answer was low-confidence. You've been escalated. Give a better answer.",
+      },
+    ],
+  };
+}
+
+function buildSelfReviewPrompt(
+  task: string,
+  answer: string,
+  tier: ModelTier,
+): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: MODEL_IDS[tier],
+    max_tokens: 500,
+    system:
+      "Review your previous answer for gaps, errors, or weak reasoning. If solid, return it with minimal tweaks. If flawed, return a corrected version. Output ONLY the revised answer — no meta-commentary.",
+    messages: [
+      { role: "user", content: task },
+      { role: "assistant", content: answer },
+      {
+        role: "user",
+        content: "Step back and review that. Anything wrong, missing, or unsupported? Return the final version.",
       },
     ],
   };
@@ -826,6 +887,29 @@ export async function runAgentTree(
             // keep original answer if retry fails
           }
         }
+        const { clean, confidence } = parseConfidence(answer);
+        answer = clean;
+        if (confidence <= 5) {
+          const newTier = escalateTier(tier);
+          emit({ type: "agent_escalated", id, from: tier, to: newTier, confidence });
+          try {
+            const escalated = await call(buildEscalationPrompt(task, answer, newTier));
+            answer = parseConfidence(escalated).clean;
+          } catch {
+            // keep pre-escalation answer
+          }
+        }
+        if (answer.length > 50 && !signal?.aborted) {
+          emit({ type: "agent_reviewing", id });
+          try {
+            const reviewed = await call(buildSelfReviewPrompt(task, answer, tier));
+            if (!isJunkResult(reviewed) && reviewed.length > 20) {
+              answer = parseConfidence(reviewed).clean;
+            }
+          } catch {
+            // keep original
+          }
+        }
         emit({ type: "agent_complete", id, result: answer });
         return { label, result: answer };
       }
@@ -980,6 +1064,18 @@ export async function runAgentTree(
             answer = await call(buildRetryPrompt(task, answer, tier));
           } catch {
             // keep original answer if retry fails
+          }
+        }
+        const { clean, confidence } = parseConfidence(answer);
+        answer = clean;
+        if (confidence <= 5) {
+          const newTier = escalateTier(tier);
+          emit({ type: "agent_escalated", id, from: tier, to: newTier, confidence });
+          try {
+            const escalated = await call(buildEscalationPrompt(task, answer, newTier));
+            answer = parseConfidence(escalated).clean;
+          } catch {
+            // keep pre-escalation answer
           }
         }
         emit({ type: "agent_complete", id, result: answer });
