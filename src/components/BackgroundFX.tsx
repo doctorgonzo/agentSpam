@@ -222,11 +222,29 @@ export default function BackgroundFX() {
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className="fixed inset-0 pointer-events-none"
-      style={{ zIndex: 0 }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        className="fixed inset-0 pointer-events-none"
+        style={{ zIndex: 0 }}
+      />
+      <div
+        style={{
+          position: "fixed",
+          top: 8,
+          right: 8,
+          background: "#ff0000",
+          color: "#fff",
+          padding: "4px 8px",
+          fontSize: 11,
+          fontFamily: "monospace",
+          zIndex: 9999,
+          borderRadius: 4,
+        }}
+      >
+        BackgroundFX mounted
+      </div>
+    </>
   );
 }
