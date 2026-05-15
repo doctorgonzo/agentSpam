@@ -23,6 +23,7 @@ import AgentTree from "@/components/AgentTree";
 import InputPanel from "@/components/InputPanel";
 import ResultPanel from "@/components/ResultPanel";
 import DetailPanel from "@/components/DetailPanel";
+import BackgroundFX from "@/components/BackgroundFX";
 
 export default function Home() {
   const [agents, setAgents] = useState<Map<string, AgentNode>>(new Map());
@@ -96,6 +97,41 @@ export default function Home() {
     }, 100);
     return () => clearInterval(interval);
   }, [isRunning, scoutStatus]);
+
+  // Safety net: when a run ends, mark any still-thinking agents as errored
+  // so the Brain doesn't tick forever after a Vercel/stream timeout. Also
+  // build a fallback summary from completed children if the Brain never
+  // emitted final_result.
+  useEffect(() => {
+    if (isRunning) return;
+    let changed = false;
+    const newMap = new Map(agentsRef.current);
+    newMap.forEach((agent, id) => {
+      if (agent.status === "spawning" || agent.status === "thinking") {
+        newMap.set(id, { ...agent, status: "error" });
+        changed = true;
+      }
+    });
+    if (changed) {
+      agentsRef.current = newMap;
+      setAgents(newMap);
+    }
+    if (!finalResult && newMap.size > 0) {
+      const completed = Array.from(newMap.values()).filter(
+        (a) => a.status === "complete" && a.result && a.depth > 0,
+      );
+      if (completed.length > 0) {
+        const fallback =
+          `*The Brain timed out before it could synthesize. Here's what its sub-agents came back with:*\n\n` +
+          completed
+            .slice(0, 8)
+            .map((a) => `**${a.label}**\n${a.result?.slice(0, 400)}`)
+            .join("\n\n---\n\n");
+        setFinalResult(fallback);
+        setShowResult(true);
+      }
+    }
+  }, [isRunning, finalResult]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -315,7 +351,8 @@ export default function Home() {
   const hasAgents = agents.size > 0;
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden">
+    <div className="relative flex flex-col h-screen bg-transparent text-white overflow-hidden">
+      <BackgroundFX />
       {/* Header */}
       <header className="flex-none px-6 py-3 border-b border-white/5">
         <div className="flex items-center justify-between w-full">
