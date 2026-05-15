@@ -81,7 +81,7 @@ export default function BackgroundFX_v3() {
 
     // Mouse "Neo" warp field — glyphs bend around the cursor.
     const mouse = { x: -9999, y: -9999, active: false, smoothX: -9999, smoothY: -9999 };
-    const WARP_RADIUS = 160;
+    const WARP_RADIUS = 95;
     const WARP_STRENGTH = 0.85;
 
     function onMouseMove(e: MouseEvent) {
