@@ -79,6 +79,22 @@ export default function BackgroundFX_v3() {
     let columns: RainColumn[] = [];
     const rings: PulseRing[] = [];
 
+    // Mouse "Neo" warp field — glyphs bend around the cursor.
+    const mouse = { x: -9999, y: -9999, active: false, smoothX: -9999, smoothY: -9999 };
+    const WARP_RADIUS = 160;
+    const WARP_STRENGTH = 0.85;
+
+    function onMouseMove(e: MouseEvent) {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.active = true;
+    }
+    function onMouseLeave() {
+      mouse.active = false;
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseleave", onMouseLeave);
+
     function pickGlyph(): string {
       return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
     }
@@ -194,6 +210,22 @@ export default function BackgroundFX_v3() {
           const yPos = rowIdx * fs;
           if (yPos < -fs || yPos > height) continue;
 
+          // Neo warp: push glyphs radially outward from cursor when near.
+          let drawX = col.x - fs / 2;
+          let drawY = yPos;
+          if (mouse.active) {
+            const dx = col.x - mouse.x;
+            const dy = yPos - mouse.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < WARP_RADIUS && dist > 0.1) {
+              const t = 1 - dist / WARP_RADIUS;
+              // Smoothed force: strongest near the cursor, eases to 0 at radius.
+              const force = t * t * WARP_RADIUS * WARP_STRENGTH;
+              drawX += (dx / dist) * force;
+              drawY += (dy / dist) * force;
+            }
+          }
+
           const glyphIdx = ((rowIdx % col.glyphs.length) + col.glyphs.length) % col.glyphs.length;
           const glyph = col.glyphs[glyphIdx];
 
@@ -209,7 +241,7 @@ export default function BackgroundFX_v3() {
             const alpha = Math.max(0, t * 0.35);
             ctx.fillStyle = `hsla(${col.hue}, 80%, ${40 + t * 20}%, ${alpha})`;
           }
-          ctx.fillText(glyph, col.x - fs / 2, yPos);
+          ctx.fillText(glyph, drawX, drawY);
         }
         ctx.shadowBlur = 0;
 
@@ -249,6 +281,8 @@ export default function BackgroundFX_v3() {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseleave", onMouseLeave);
       document.removeEventListener("visibilitychange", handleVisibility);
       if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
     };
