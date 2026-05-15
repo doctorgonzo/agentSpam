@@ -125,6 +125,58 @@ export default function Home() {
   const [soloResult, setSoloResult] = useState<string | null>(null);
   const [soloElapsedMs, setSoloElapsedMs] = useState<number | null>(null);
   const [soloRunning, setSoloRunning] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("agentSpam.voice");
+      if (saved === "off") setVoiceEnabled(false);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const toggleVoice = useCallback(() => {
+    setVoiceEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("agentSpam.voice", next ? "on" : "off");
+      } catch {
+        // ignore
+      }
+      if (!next && typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      return next;
+    });
+  }, []);
+
+  function speakVerdict(text: string) {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    // Strip markdown so we don't speak asterisks and pound signs.
+    const clean = text
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/[*_#>]+/g, "")
+      .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+      .replace(/\n{2,}/g, ". ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 800);
+    if (!clean) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean);
+    const voices = window.speechSynthesis.getVoices();
+    const preferred =
+      voices.find((v) => /Daniel|Alex|Lee|Bruce|Fred/i.test(v.name) && v.lang.startsWith("en")) ||
+      voices.find((v) => v.lang.startsWith("en-GB")) ||
+      voices.find((v) => v.lang.startsWith("en"));
+    if (preferred) u.voice = preferred;
+    u.rate = 0.92;
+    u.pitch = 0.82;
+    u.volume = 0.95;
+    window.speechSynthesis.speak(u);
+  }
   const [actions, setActions] = useState<ProposedAction[]>([]);
 
   useEffect(() => {
@@ -403,6 +455,12 @@ export default function Home() {
                     result: event.result,
                   });
                   completeSound();
+                  if (
+                    agentsRef.current.get(event.id)?.debateRole === "judge" &&
+                    voiceEnabled
+                  ) {
+                    speakVerdict(event.result);
+                  }
                   break;
 
                 case "agent_named": {
@@ -515,6 +573,18 @@ export default function Home() {
               }`}
             >
               {appMode === "demo" ? "● demo" : "○ dev"}
+            </button>
+            <button
+              type="button"
+              onClick={toggleVoice}
+              title={`Judge voice ${voiceEnabled ? "ON — click to mute" : "OFF — click to enable"}`}
+              className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-full border transition-all ${
+                voiceEnabled
+                  ? "bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25"
+                  : "bg-white/5 border-white/15 text-white/40 hover:bg-white/10"
+              }`}
+            >
+              {voiceEnabled ? "\u{1F50A} voice" : "\u{1F507} muted"}
             </button>
           </div>
           <div className="flex items-center gap-3 text-xs">
