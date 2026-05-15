@@ -8,6 +8,8 @@ export interface CustomSpecialist {
   role: string;
 }
 
+export type DebateRole = "topic" | "bull" | "bear" | "judge";
+
 export interface AgentNode {
   id: string;
   parentId: string | null;
@@ -19,6 +21,8 @@ export interface AgentNode {
   result?: string;
   specialty?: Specialty;
   customSpecialist?: CustomSpecialist;
+  debateRole?: DebateRole;
+  debateRound?: number;
 }
 
 export const SPECIALTY_LABELS: Record<Specialty, string> = {

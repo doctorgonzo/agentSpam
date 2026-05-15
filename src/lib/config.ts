@@ -26,10 +26,10 @@ const MODES: Record<AppMode, ModeConfig> = {
   },
   demo: {
     maxDepth: 5,
-    maxAgents: 50,
+    maxAgents: 90,
     rootFanout: "5-6",
     managerFanout: "3-4",
-    workerFanout: "2-3",
+    workerFanout: "3-4",
     fallbackSplitRoot: 4,
     fallbackSplitChild: 3,
     enableDebate: true,
@@ -38,7 +38,7 @@ const MODES: Record<AppMode, ModeConfig> = {
 };
 
 // ─── FLIP THIS FOR DEMO DAY ───
-const ACTIVE_MODE: AppMode = "dev";
+const ACTIVE_MODE: AppMode = "demo";
 
 const config = { ...MODES[ACTIVE_MODE], mode: ACTIVE_MODE };
 

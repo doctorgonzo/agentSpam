@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { CustomSpecialist, ModelTier, Specialty, SPECIALTY_EMOJI } from "@/lib/types";
+import { CustomSpecialist, DebateRole, ModelTier, Specialty, SPECIALTY_EMOJI } from "@/lib/types";
 
 const tierStyles: Record<
   ModelTier,
@@ -51,7 +51,51 @@ interface AgentNodeData {
   selected?: boolean;
   specialty?: Specialty;
   customSpecialist?: CustomSpecialist;
+  debateRole?: DebateRole;
+  debateRound?: number;
 }
+
+const debateStyles: Record<
+  DebateRole,
+  { bg: string; border: string; glow: string; badgeBg: string; badgeText: string; glowColor: string; label: string }
+> = {
+  topic: {
+    bg: "bg-amber-950/80",
+    border: "border-amber-400",
+    glow: "shadow-amber-500/60",
+    badgeBg: "bg-amber-500",
+    badgeText: "DEBATE",
+    glowColor: "#f59e0b",
+    label: "topic",
+  },
+  bull: {
+    bg: "bg-red-950/80",
+    border: "border-red-400",
+    glow: "shadow-red-500/60",
+    badgeBg: "bg-red-500",
+    badgeText: "PRO",
+    glowColor: "#ef4444",
+    label: "bull",
+  },
+  bear: {
+    bg: "bg-sky-950/80",
+    border: "border-sky-400",
+    glow: "shadow-sky-500/60",
+    badgeBg: "bg-sky-500",
+    badgeText: "CON",
+    glowColor: "#0ea5e9",
+    label: "bear",
+  },
+  judge: {
+    bg: "bg-yellow-950/80",
+    border: "border-yellow-400",
+    glow: "shadow-yellow-500/60",
+    badgeBg: "bg-yellow-500",
+    badgeText: "VERDICT",
+    glowColor: "#eab308",
+    label: "judge",
+  },
+};
 
 export default function AgentNodeComponent({
   data,
@@ -94,6 +138,8 @@ export default function AgentNodeComponent({
     haiku: "animate-spawn-burst-green",
   };
 
+  const debate = data.debateRole ? debateStyles[data.debateRole] : null;
+
   return (
     <div
       onClick={(e) => {
@@ -104,16 +150,18 @@ export default function AgentNodeComponent({
         relative rounded-xl border-2 px-4 py-3 min-w-[200px] max-w-[260px]
         backdrop-blur-sm transition-all duration-300 cursor-pointer
         hover:brightness-125 hover:scale-[1.02]
-        ${data.customSpecialist ? "bg-fuchsia-950/80 border-fuchsia-400" : `${style.bg} ${style.border}`}
-        ${data.customSpecialist && !isActive && !isDone ? "shadow-lg shadow-fuchsia-500/30" : ""}
-        ${data.customSpecialist && isDone ? "shadow-md shadow-fuchsia-500/40" : ""}
-        ${isActive ? `shadow-lg ${data.customSpecialist ? "shadow-fuchsia-500/60" : style.glow} animate-ambient-glow` : ""}
-        ${isDone && !data.customSpecialist ? "shadow-md animate-done-flash" : ""}
+        ${debate ? `${debate.bg} ${debate.border}` : data.customSpecialist ? "bg-fuchsia-950/80 border-fuchsia-400" : `${style.bg} ${style.border}`}
+        ${debate && !isActive && !isDone ? `shadow-lg ${debate.glow}` : ""}
+        ${debate && isDone ? `shadow-md ${debate.glow}` : ""}
+        ${!debate && data.customSpecialist && !isActive && !isDone ? "shadow-lg shadow-fuchsia-500/30" : ""}
+        ${!debate && data.customSpecialist && isDone ? "shadow-md shadow-fuchsia-500/40" : ""}
+        ${isActive ? `shadow-lg ${debate ? debate.glow : data.customSpecialist ? "shadow-fuchsia-500/60" : style.glow} animate-ambient-glow` : ""}
+        ${isDone && !debate && !data.customSpecialist ? "shadow-md animate-done-flash" : ""}
         ${isError ? "border-red-500 shadow-red-500/30" : ""}
         ${data.status === "spawning" ? `scale-90 opacity-0 animate-pop-in ${data.customSpecialist ? "animate-spawn-burst-fuchsia" : burstClass[data.model]}` : ""}
-        ${isSelected ? `ring-2 ring-offset-2 ring-offset-zinc-950 ${data.customSpecialist ? "ring-fuchsia-400" : style.ring} brightness-125` : ""}
+        ${isSelected ? `ring-2 ring-offset-2 ring-offset-zinc-950 ${debate ? "ring-amber-300" : data.customSpecialist ? "ring-fuchsia-400" : style.ring} brightness-125` : ""}
       `}
-      style={isActive ? { color: data.customSpecialist ? "#d946ef" : style.glowColor } : undefined}
+      style={isActive ? { color: debate ? debate.glowColor : data.customSpecialist ? "#d946ef" : style.glowColor } : undefined}
     >
       <Handle
         type="target"
@@ -131,18 +179,22 @@ export default function AgentNodeComponent({
         </span>
         <span
           className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-white truncate max-w-[160px] ${
-            data.customSpecialist
-              ? "bg-gradient-to-r from-fuchsia-500 to-pink-500"
-              : data.specialty
-                ? "bg-amber-500"
-                : style.badge
+            debate
+              ? debate.badgeBg
+              : data.customSpecialist
+                ? "bg-gradient-to-r from-fuchsia-500 to-pink-500"
+                : data.specialty
+                  ? "bg-amber-500"
+                  : style.badge
           }`}
         >
-          {data.customSpecialist
-            ? data.customSpecialist.name || "\u{2728} self-naming..."
-            : data.specialty
-              ? data.specialty
-              : data.model}
+          {debate
+            ? debate.badgeText + (data.debateRound ? ` R${data.debateRound}` : "")
+            : data.customSpecialist
+              ? data.customSpecialist.name || "\u{2728} self-naming..."
+              : data.specialty
+                ? data.specialty
+                : data.model}
         </span>
         {isDone && (
           <span className="text-emerald-400 text-xs ml-auto flex items-center gap-1">

@@ -826,6 +826,7 @@ export async function runAgentTree(
         task: topic.description,
         label: debateLabel,
         status: "spawning",
+        debateRole: "topic",
       },
     });
     emit({ type: "agent_thinking", id: debateId });
@@ -847,6 +848,7 @@ export async function runAgentTree(
       opponentLast: string | null,
     ): Promise<string> {
       const id = makeId();
+      const role: "bull" | "bear" = spec.name === "The Bull" ? "bull" : "bear";
       emit({
         type: "agent_spawned",
         agent: {
@@ -858,6 +860,8 @@ export async function runAgentTree(
           label: `${spec.name} R${round}`,
           status: "spawning",
           customSpecialist: spec,
+          debateRole: role,
+          debateRound: round,
         },
       });
       emit({ type: "agent_thinking", id });
@@ -915,6 +919,7 @@ export async function runAgentTree(
         label: "The Judge",
         status: "spawning",
         customSpecialist: judgeSpec,
+        debateRole: "judge",
       },
     });
     emit({ type: "agent_thinking", id: judgeId });

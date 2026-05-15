@@ -102,13 +102,23 @@ function AgentTreeInner({
           selected: selectedAgentId === agent.id,
           specialty: agent.specialty,
           customSpecialist: agent.customSpecialist,
+          debateRole: agent.debateRole,
+          debateRound: agent.debateRound,
         },
       });
 
       if (agent.parentId) {
-        const edgeColor = agent.customSpecialist
-          ? "#d946ef"
-          : tierColors[agent.model] || "#666";
+        const edgeColor = agent.debateRole === "bull"
+          ? "#ef4444"
+          : agent.debateRole === "bear"
+            ? "#3b82f6"
+            : agent.debateRole === "judge"
+              ? "#f59e0b"
+              : agent.debateRole === "topic"
+                ? "#f59e0b"
+                : agent.customSpecialist
+                  ? "#d946ef"
+                  : tierColors[agent.model] || "#666";
         rawEdges.push({
           id: `${agent.parentId}->${agent.id}`,
           source: agent.parentId,
