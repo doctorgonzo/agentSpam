@@ -8,6 +8,8 @@ interface ModeConfig {
   workerFanout: string;
   fallbackSplitRoot: number;
   fallbackSplitChild: number;
+  enableDebate: boolean;
+  debateRounds: number;
 }
 
 const MODES: Record<AppMode, ModeConfig> = {
@@ -19,6 +21,8 @@ const MODES: Record<AppMode, ModeConfig> = {
     workerFanout: "2-3",
     fallbackSplitRoot: 3,
     fallbackSplitChild: 2,
+    enableDebate: false,
+    debateRounds: 0,
   },
   demo: {
     maxDepth: 5,
@@ -28,6 +32,8 @@ const MODES: Record<AppMode, ModeConfig> = {
     workerFanout: "2-3",
     fallbackSplitRoot: 4,
     fallbackSplitChild: 3,
+    enableDebate: true,
+    debateRounds: 3,
   },
 };
 

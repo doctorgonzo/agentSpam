@@ -807,6 +807,141 @@ export async function runAgentTree(
     enrichedPrompt = `${enrichedPrompt}\n\n[Prior runs you may build on — only use if directly relevant]:\n${memory}`;
   }
 
+  async function runDebate(
+    topic: { description: string; label: string },
+    parentId: string,
+    parentDepth: number,
+  ): Promise<{ label: string; result: string }> {
+    if (signal?.aborted) return { label: topic.label, result: "[stopped]" };
+
+    const debateId = makeId();
+    const debateLabel = `\u{1F94A} ${topic.label}`;
+    emit({
+      type: "agent_spawned",
+      agent: {
+        id: debateId,
+        parentId,
+        depth: parentDepth,
+        model: "opus",
+        task: topic.description,
+        label: debateLabel,
+        status: "spawning",
+      },
+    });
+    emit({ type: "agent_thinking", id: debateId });
+
+    const bull: CustomSpecialist = {
+      name: "The Bull",
+      emoji: "\u{1F402}",
+      role: "You argue FOR the proposal. Find every reason it could work. Address counterpoints head-on. Be specific and cite evidence.",
+    };
+    const bear: CustomSpecialist = {
+      name: "The Bear",
+      emoji: "\u{1F43B}",
+      role: "You argue AGAINST the proposal. Find every reason it could fail. Attack weak assumptions and missing evidence. Be sharp, not contrarian.",
+    };
+
+    async function spawnDebater(
+      spec: CustomSpecialist,
+      round: number,
+      opponentLast: string | null,
+    ): Promise<string> {
+      const id = makeId();
+      emit({
+        type: "agent_spawned",
+        agent: {
+          id,
+          parentId: debateId,
+          depth: parentDepth + 1,
+          model: "sonnet",
+          task: topic.description,
+          label: `${spec.name} R${round}`,
+          status: "spawning",
+          customSpecialist: spec,
+        },
+      });
+      emit({ type: "agent_thinking", id });
+
+      const system =
+        round === 1
+          ? `${spec.role}\n\nRound 1 of a debate. Give your strongest opening on the topic. Be specific. 3-5 sentences.`
+          : `${spec.role}\n\nRound ${round} of a debate. Your opponent just said:\n\n"${opponentLast}"\n\nRebut sharply. Acknowledge any genuinely strong point briefly, then explain why your position still wins. 3-5 sentences.`;
+
+      try {
+        const text = await call({
+          model: MODEL_IDS.sonnet,
+          max_tokens: 400,
+          system,
+          messages: [{ role: "user", content: `Topic: ${topic.description}` }],
+        });
+        emit({ type: "agent_complete", id, result: text });
+        return text;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "error";
+        emit({ type: "agent_error", id, error: msg });
+        return `[error: ${msg}]`;
+      }
+    }
+
+    let lastBull = "";
+    let lastBear = "";
+    for (let round = 1; round <= config.debateRounds; round++) {
+      if (signal?.aborted) {
+        emit({ type: "agent_complete", id: debateId, result: "[stopped mid-debate]" });
+        return { label: debateLabel, result: "[stopped mid-debate]" };
+      }
+      const [b1, b2] = await Promise.all([
+        spawnDebater(bull, round, round === 1 ? null : lastBear),
+        spawnDebater(bear, round, round === 1 ? null : lastBull),
+      ]);
+      lastBull = b1;
+      lastBear = b2;
+    }
+
+    const judgeId = makeId();
+    const judgeSpec: CustomSpecialist = {
+      name: "The Judge",
+      emoji: "\u{2696}\u{FE0F}",
+      role: "Impartial judge",
+    };
+    emit({
+      type: "agent_spawned",
+      agent: {
+        id: judgeId,
+        parentId: debateId,
+        depth: parentDepth + 1,
+        model: "opus",
+        task: topic.description,
+        label: "The Judge",
+        status: "spawning",
+        customSpecialist: judgeSpec,
+      },
+    });
+    emit({ type: "agent_thinking", id: judgeId });
+
+    try {
+      const verdict = await call({
+        model: MODEL_IDS.opus,
+        max_tokens: 600,
+        system: `You are THE JUDGE — you watched a ${config.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side. End with a clear ruling. Be decisive.`,
+        messages: [
+          {
+            role: "user",
+            content: `Topic: ${topic.description}\n\nThe Bull's final: ${lastBull}\n\nThe Bear's final: ${lastBear}\n\nRender your verdict:`,
+          },
+        ],
+      });
+      emit({ type: "agent_complete", id: judgeId, result: verdict });
+      emit({ type: "agent_complete", id: debateId, result: verdict });
+      return { label: debateLabel, result: verdict };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "error";
+      emit({ type: "agent_error", id: judgeId, error: msg });
+      emit({ type: "agent_error", id: debateId, error: msg });
+      return { label: debateLabel, result: `[debate error: ${msg}]` };
+    }
+  }
+
   async function spawnAgent(
     task: string,
     label: string,
@@ -1043,9 +1178,24 @@ export async function runAgentTree(
         const critics = parsed.subtasks.filter((s) => s.specialty === "critic");
         const nonCritics = parsed.subtasks.filter((s) => s.specialty !== "critic");
 
+        // In demo mode, convert one regular subtask into a 3-round debate.
+        // Picks the first regular (non-specialty, non-custom) child.
+        const debateIdx =
+          depth === 0 && config.enableDebate
+            ? nonCritics.findIndex((s) => !s.specialty && !s.customSpecialist)
+            : -1;
+        const debateTopic = debateIdx >= 0 ? nonCritics[debateIdx] : null;
+
         const nonCriticResults = await Promise.all(
-          nonCritics.map((sub) =>
-            spawnAgent(
+          nonCritics.map((sub, i) => {
+            if (debateTopic && i === debateIdx) {
+              return runDebate(
+                { description: sub.description, label: sub.label },
+                id,
+                depth + 1,
+              );
+            }
+            return spawnAgent(
               sub.description,
               sub.label,
               depth + 1,
@@ -1053,8 +1203,8 @@ export async function runAgentTree(
               sub.specialty,
               undefined,
               sub.customSpecialist,
-            ),
-          ),
+            );
+          }),
         );
 
         if (signal?.aborted) {

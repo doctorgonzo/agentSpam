@@ -23,7 +23,80 @@ import AgentTree from "@/components/AgentTree";
 import InputPanel from "@/components/InputPanel";
 import ResultPanel from "@/components/ResultPanel";
 import DetailPanel from "@/components/DetailPanel";
-import BackgroundFX from "@/components/BackgroundFX";
+import BackgroundFX from "@/components/BackgroundFX_v3";
+
+interface DemoPrompt {
+  emoji: string;
+  title: string;
+  subtitle: string;
+  prompt: string;
+  mode: MissionMode;
+  role: string;
+}
+
+const DEMO_PROMPTS: DemoPrompt[] = [
+  {
+    emoji: "\u{1F454}",
+    title: "Hire or pass on this engineer?",
+    subtitle: "Verdict + red flags + comp range",
+    prompt: `Should we hire this candidate? Give me a clear verdict, the red flags, and a comp range.
+
+CANDIDATE: Alex Chen, Senior Backend Engineer applicant.
+- 8 years experience, last 3 at a Series B fintech (lead engineer on payments)
+- Earlier: 2 years at a small startup that shut down, 3 years at a FAANG
+- GitHub: 2 popular OSS libs in Go (3k and 1.5k stars), last commit 14 months ago
+- Asking $230k base + equity. Market for this role is $200-260k.
+- Interview signal: aced the system design (designed a multi-region payment processor cleanly), bombed the live coding (couldn't finish a basic LRU cache in 45 min — said he was nervous)
+- References: glowing from his Series B manager, lukewarm from FAANG manager ("solid but kept to himself, didn't volunteer for high-visibility work")
+- He volunteered that he's interviewing at 3 other places and has one verbal offer at $250k base.`,
+    mode: "recruiter",
+    role: "recruiter",
+  },
+  {
+    emoji: "\u{2696}\u{FE0F}",
+    title: "Find every red flag in this contract",
+    subtitle: "Liability traps, missing clauses, leverage",
+    prompt: `Find every red flag, liability trap, and unfair clause in this contract excerpt. Tell me what to push back on and what's standard.
+
+CONTRACT: Master Services Agreement excerpt.
+
+3.2 INDEMNIFICATION. Service Provider shall defend, indemnify, and hold harmless Client and its affiliates, officers, directors, employees, and agents from and against ANY and all claims, damages, losses, costs (including reasonable attorneys' fees), and expenses arising from or related to (a) Service Provider's performance or non-performance under this Agreement, (b) any third-party claim regardless of cause, and (c) any breach of representations, warranties, or covenants herein.
+
+5.1 PAYMENT. Fees due within sixty (60) days of invoice. Late payments accrue interest at 1.5% per month. Client may dispute any invoice in good faith and withhold the disputed amount; resolution may take up to 180 days.
+
+7.3 TERMINATION FOR CONVENIENCE. Client may terminate this Agreement at any time for any reason or no reason with thirty (30) days notice, without liability for any uncompleted work or pre-paid fees.
+
+9.1 IP ASSIGNMENT. All work product, deliverables, derivative works, and any pre-existing materials Service Provider incorporates into the deliverables shall be deemed work-for-hire and Service Provider hereby irrevocably assigns all rights, title, and interest therein to Client.
+
+12.4 LIMITATION OF LIABILITY. Client's total liability shall not exceed fees paid in the preceding three (3) months. This limitation does not apply to Service Provider's indemnification obligations under Section 3.2.`,
+    mode: "legal",
+    role: "junior-lawyer",
+  },
+  {
+    emoji: "\u{1F4C8}",
+    title: "Pressure-test this product strategy",
+    subtitle: "Market risk, competition, execution gaps",
+    prompt: `Stress-test this product strategy. What's the biggest risk we're missing? Where will competitors crush us? What's the execution gap?
+
+STRATEGY: Q1 2026 product plan for a B2B AI note-taking app called Recapio.
+
+CURRENT STATE:
+- 4,200 paying customers, $89/mo each, mostly mid-market sales teams
+- Net retention 112%, gross retention 91%
+- Top 3 competitors: Otter.ai ($2B valuation, broader market), Fireflies ($1B, similar ICP), Gong (enterprise, $7B, way more $)
+- Our wedge: best-in-class Salesforce auto-sync, opinionated meeting summary format
+
+Q1 PLAN:
+1. Move upmarket — add SSO, audit logs, custom roles. Target $250k+ ACV enterprise deals.
+2. Build a "deal intelligence" layer — auto-flag stalled deals, missing decision-makers, churn risk signals. Pitch this as "Gong-lite at 1/5 the price."
+3. Layoff 30% of the customer success team to fund 8 new enterprise AEs.
+4. Raise a $25M Series B in late Q1 on the strength of the new pipeline.
+
+We have 14 months of runway at current burn. Founder/CEO is non-technical, raised once before.`,
+    mode: "market",
+    role: "consultant",
+  },
+];
 
 export default function Home() {
   const [agents, setAgents] = useState<Map<string, AgentNode>>(new Map());
@@ -492,6 +565,29 @@ export default function Home() {
                 agents that each do one thing. The tree of idiots collectively
                 produces something brilliant.
               </p>
+            </div>
+            <div className="w-full max-w-3xl flex flex-col items-center gap-3">
+              <div className="text-white/40 text-xs uppercase tracking-widest">
+                Or try one of these
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
+                {DEMO_PROMPTS.map((d) => (
+                  <button
+                    key={d.title}
+                    onClick={() => handleSubmit(d.prompt, [], d.mode, d.role)}
+                    disabled={isRunning}
+                    className="group text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/40 rounded-xl p-4 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <div className="text-2xl mb-2">{d.emoji}</div>
+                    <div className="text-white font-medium text-sm mb-1">
+                      {d.title}
+                    </div>
+                    <div className="text-white/40 text-xs line-clamp-2">
+                      {d.subtitle}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
             <InputPanel onSubmit={handleSubmit} onStop={handleStop} isRunning={isRunning} />
           </div>
