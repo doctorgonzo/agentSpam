@@ -37,8 +37,10 @@ const MODES: Record<AppMode, ModeConfig> = {
   },
 };
 
-// ─── FLIP THIS FOR DEMO DAY ───
-const ACTIVE_MODE: AppMode = "dev";
+// Read from NEXT_PUBLIC_AGENT_MODE env var so local can be "demo" via
+// .env.local while prod defaults to "dev". Falls back to dev if unset.
+const envMode = process.env.NEXT_PUBLIC_AGENT_MODE;
+const ACTIVE_MODE: AppMode = envMode === "demo" ? "demo" : "dev";
 
 const config = { ...MODES[ACTIVE_MODE], mode: ACTIVE_MODE };
 
