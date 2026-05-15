@@ -529,7 +529,7 @@ function parseAgentResponse(text: string): AgentResponse {
   return { type: "answer", answer: text };
 }
 
-const AGENT_TIMEOUT_MS = 60000;
+const AGENT_TIMEOUT_MS = 90000;
 
 let inFlight = 0;
 const MAX_CONCURRENT = 8;
@@ -579,7 +579,7 @@ async function callClaude(
       cleanup();
       signal?.removeEventListener("abort", onUpstreamAbort);
       if (timeoutController.signal.aborted && !signal?.aborted) {
-        throw new Error("agent timed out (45s)");
+        throw new Error("agent timed out (90s)");
       }
       throw err;
     }
@@ -710,10 +710,17 @@ export async function runAgentTree(
     }
     // Decomposers (Brain / Manager / Worker): produce a fast 2-3 subtask split.
     const splitCount = depth === 0 ? config.fallbackSplitRoot : config.fallbackSplitChild;
+    const hasContext =
+      task.includes("[Document content") ||
+      task.includes("[Live data from Scout") ||
+      task.includes("documents to compare]");
+    const contextRule = hasContext
+      ? " CRITICAL: the task contains document or scout content — COPY the relevant facts (names, numbers, quotes) directly into each subtask description. Sub-agents have no other source."
+      : "";
     return {
       model: MODEL_IDS.haiku,
-      max_tokens: 350,
-      system: `Output JSON only. Split into ${splitCount} subtasks. No prose. Shape: {"subtasks":[{"label":"X","description":"Y"}]}`,
+      max_tokens: hasContext ? 700 : 350,
+      system: `Output JSON only. Split into ${splitCount} subtasks. No prose.${contextRule} Shape: {"subtasks":[{"label":"X","description":"Y"}]}`,
       messages: [{ role: "user", content: `Split this task: ${task}` }],
     };
   }
@@ -874,7 +881,18 @@ export async function runAgentTree(
         specialty,
         customSpecialist,
       );
-      const deadline = depth === 0 ? 45000 : depth === 1 ? 25000 : 15000;
+      const hasHeavyContext =
+        task.includes("[Document content") ||
+        task.includes("documents to compare]") ||
+        task.includes("[Live data from Scout");
+      const deadline =
+        depth === 0
+          ? hasHeavyContext
+            ? 75000
+            : 45000
+          : depth === 1
+            ? 25000
+            : 15000;
       let responseText = await callOrFallback(params, fallbackParams, deadline);
       let parsed = parseAgentResponse(responseText);
 
