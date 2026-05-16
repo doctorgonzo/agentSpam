@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { budgetStatus, recordCost } from "@/lib/budget";
 
 export const maxDuration = 60;
 
@@ -9,6 +10,28 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // prompt straight to messages.create. The whole point of this endpoint
 // is to give the user's tree something honest to be measured against.
 export async function POST(req: Request) {
+  // Demo token gate.
+  const expectedKey = process.env.DEMO_KEY;
+  if (expectedKey) {
+    const provided = req.headers.get("x-demo-key");
+    if (provided !== expectedKey) {
+      return new Response(JSON.stringify({ error: "Demo access required" }), {
+        status: 403,
+      });
+    }
+  }
+
+  // Daily budget cap.
+  const status = budgetStatus();
+  if (!status.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: `Daily demo cap of $${status.capUsd.toFixed(2)} reached. Try again tomorrow.`,
+      }),
+      { status: 429 },
+    );
+  }
+
   const body = await req.json();
   const { prompt } = body;
   if (!prompt || typeof prompt !== "string") {
@@ -26,6 +49,10 @@ export async function POST(req: Request) {
     });
     const textBlock = response.content.find((b) => b.type === "text");
     const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
+    // Record cost using sonnet-4-6 pricing.
+    const inTok = response.usage?.input_tokens ?? 0;
+    const outTok = response.usage?.output_tokens ?? 0;
+    recordCost(inTok * (3 / 1e6) + outTok * (15 / 1e6));
     return new Response(
       JSON.stringify({
         text,

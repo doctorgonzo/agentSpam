@@ -1,9 +1,34 @@
 import { runAgentTree } from "@/lib/agent-engine";
 import { AgentEvent, SpawnRequest } from "@/lib/types";
+import { budgetStatus, recordCost } from "@/lib/budget";
 
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
+  // Demo token gate. If DEMO_KEY is set on the server, require it in
+  // x-demo-key header. If unset, no gate (dev mode).
+  const expectedKey = process.env.DEMO_KEY;
+  if (expectedKey) {
+    const provided = req.headers.get("x-demo-key");
+    if (provided !== expectedKey) {
+      return new Response(
+        JSON.stringify({ error: "Demo access required" }),
+        { status: 403 },
+      );
+    }
+  }
+
+  // Daily budget cap check.
+  const status = budgetStatus();
+  if (!status.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: `Daily demo cap of $${status.capUsd.toFixed(2)} reached. Already spent $${status.spentUsd.toFixed(4)} today. Try again tomorrow.`,
+      }),
+      { status: 429 },
+    );
+  }
+
   const body: SpawnRequest = await req.json();
   const { prompt, file, files, mode, role, memory, appMode } = body;
 
@@ -28,7 +53,11 @@ export async function POST(req: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let runCost = 0;
       const emit = (event: AgentEvent) => {
+        if (event.type === "cost_update") {
+          runCost = event.totalCost;
+        }
         try {
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
@@ -48,6 +77,8 @@ export async function POST(req: Request) {
         emit({ type: "done" });
       }
 
+      // Record this run's cost against the daily cap.
+      recordCost(runCost);
       controller.close();
     },
   });
