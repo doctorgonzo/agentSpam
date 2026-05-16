@@ -131,7 +131,12 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const k = params.get("key");
-    if (k) setAccessKey(k);
+    if (k) {
+      setAccessKey(k);
+      // Anyone arriving via the gated URL (i.e. judges) always gets demo
+      // mode for the session, regardless of what localStorage had.
+      setAppMode("demo");
+    }
   }, []);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
