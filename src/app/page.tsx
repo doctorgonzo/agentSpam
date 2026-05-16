@@ -574,7 +574,7 @@ export default function Home() {
 
       setIsRunning(false);
     },
-    [updateAgent, appMode],
+    [updateAgent, appMode, accessKey],
   );
 
   const hasAgents = agents.size > 0;
