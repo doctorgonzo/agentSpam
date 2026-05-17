@@ -67,7 +67,7 @@ function buildRootPrompt(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.opus,
-    max_tokens: 1500,
+    max_tokens: 700,
     system: `You are THE BRAIN. You ONLY output JSON. You NEVER answer the user directly. Your job is splitting.
 
 Split into ${cfg.rootFanout} subtasks. Witty 2-4 word labels. Each self-contained.
@@ -215,7 +215,7 @@ function buildCustomSpecialistPrompt(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.sonnet,
-    max_tokens: 600,
+    max_tokens: 400,
     system: `You are ${spec.name || "an unnamed specialist"} ${spec.emoji} — a custom specialist agent in agentSpam.
 
 Your role: ${spec.role}
@@ -343,7 +343,7 @@ function buildScoutPrompt(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
-    max_tokens: 1800,
+    max_tokens: 1200,
     system: `You are THE SCOUT — a recon agent with web search. The sub-agents downstream have NO internet access, so YOU are their only source of live data. They will rely entirely on what you return.
 
 Look at the user's task:
@@ -360,7 +360,7 @@ Do not explain. Do not preamble. Facts or NONE.`,
         content: `Today is ${new Date().toISOString().slice(0, 10)}.\n\n${userPrompt}`,
       },
     ],
-    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 4 }],
+    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 2 }],
   };
 }
 
@@ -403,7 +403,7 @@ function buildDocExtractorPrompt(
 
   return {
     model: MODEL_IDS.haiku,
-    max_tokens: 2500,
+    max_tokens: 1800,
     system:
       "You are THE EXTRACTOR. Your only job is reading the attached document and dumping its key content as structured text. Use markdown with clear headings. Include actual content (names, numbers, quotes) — do NOT summarize generically. Do NOT add commentary. Just the facts as they appear.",
     messages: [{ role: "user", content }],
@@ -452,7 +452,7 @@ function buildRootMultimodalPrompt(
 
   return {
     model: MODEL_IDS.opus,
-    max_tokens: 1500,
+    max_tokens: 900,
     system: `You are THE BRAIN. You ONLY output JSON. Never answer directly.
 
 You're analyzing a document. Read it carefully, then split the analysis into ${cfg.rootFanout} subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
@@ -1135,7 +1135,7 @@ export async function runAgentTree(
     try {
       const verdict = await call({
         model: MODEL_IDS.opus,
-        max_tokens: 600,
+        max_tokens: 400,
         system: `You are THE JUDGE — you watched a ${cfg.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side.
 
 End with EXACTLY this format on its own final line:
@@ -1331,7 +1331,7 @@ Be decisive.`,
       if (depth === 0 && parsed.type !== "subtasks") {
         const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
           model: MODEL_IDS.opus,
-          max_tokens: 900,
+          max_tokens: 500,
           system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${cfg.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
           messages: [
             { role: "user", content: task },
