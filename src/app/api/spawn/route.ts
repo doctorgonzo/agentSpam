@@ -17,17 +17,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Daily budget cap check.
-  const status = budgetStatus();
-  if (!status.allowed) {
-    return new Response(
-      JSON.stringify({
-        error: `Daily demo cap of $${status.capUsd.toFixed(2)} reached. Already spent $${status.spentUsd.toFixed(4)} today. Try again tomorrow.`,
-      }),
-      { status: 429 },
-    );
-  }
-
   const body: SpawnRequest = await req.json();
   const { prompt, file, files, mode, role, memory } = body;
   // Server-side enforcement: only requests with a valid demo key get
@@ -36,6 +25,18 @@ export async function POST(req: Request) {
     expectedKey && provided === expectedKey && body.appMode === "demo"
       ? "demo"
       : "dev";
+
+  // Per-mode daily budget cap (dev and demo have separate buckets).
+  const status = budgetStatus(appMode);
+  if (!status.allowed) {
+    const label = appMode === "demo" ? "demo" : "dev";
+    return new Response(
+      JSON.stringify({
+        error: `Daily ${label} cap of $${status.capUsd.toFixed(2)} reached. Already spent $${status.spentUsd.toFixed(4)} today. Try again tomorrow.`,
+      }),
+      { status: 429 },
+    );
+  }
 
   // Normalize to a files array — legacy single `file` still works.
   const allFiles = files && files.length > 0 ? files : file ? [file] : [];
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
       }
 
       // Record this run's cost against the daily cap.
-      recordCost(runCost);
+      recordCost(runCost, appMode);
       controller.close();
     },
   });

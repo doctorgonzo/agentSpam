@@ -18,13 +18,16 @@ export async function POST(req: Request) {
       status: 403,
     });
   }
+  // The solo call runs alongside whatever tree the user is running, so
+  // charge it to the same bucket the tree uses.
+  const solomode: "dev" | "demo" =
+    expectedKey && provided === expectedKey ? "demo" : "dev";
 
-  // Daily budget cap.
-  const status = budgetStatus();
+  const status = budgetStatus(solomode);
   if (!status.allowed) {
     return new Response(
       JSON.stringify({
-        error: `Daily demo cap of $${status.capUsd.toFixed(2)} reached. Try again tomorrow.`,
+        error: `Daily ${solomode} cap of $${status.capUsd.toFixed(2)} reached. Try again tomorrow.`,
       }),
       { status: 429 },
     );
@@ -50,7 +53,7 @@ export async function POST(req: Request) {
     // Record cost using sonnet-4-6 pricing.
     const inTok = response.usage?.input_tokens ?? 0;
     const outTok = response.usage?.output_tokens ?? 0;
-    recordCost(inTok * (3 / 1e6) + outTok * (15 / 1e6));
+    recordCost(inTok * (3 / 1e6) + outTok * (15 / 1e6), solomode);
     return new Response(
       JSON.stringify({
         text,

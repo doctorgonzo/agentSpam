@@ -215,17 +215,6 @@ export default function Home() {
     }
   }, []);
 
-  const flipAppMode = useCallback(() => {
-    setAppMode((prev) => {
-      const next = prev === "demo" ? "dev" : "demo";
-      try {
-        localStorage.setItem("agentSpam.appMode", next);
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  }, []);
   const agentsRef = useRef<Map<string, AgentNode>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -603,17 +592,16 @@ export default function Home() {
             </span>
             <button
               type="button"
-              onClick={flipAppMode}
-              disabled={isRunning || accessKey === null}
+              disabled
               title={
                 accessKey === null
-                  ? "Demo mode is reserved for the gated URL"
-                  : `Switch to ${appMode === "demo" ? "dev" : "demo"} mode`
+                  ? "Anonymous visitors are locked in dev mode"
+                  : "Judges URL is locked in demo mode"
               }
-              className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-full border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-full border opacity-60 cursor-not-allowed ${
                 appMode === "demo"
-                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25"
-                  : "bg-white/5 border-white/15 text-white/60 hover:bg-white/10"
+                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                  : "bg-white/5 border-white/15 text-white/60"
               }`}
             >
               {appMode === "demo" ? "● demo" : "○ dev"}
