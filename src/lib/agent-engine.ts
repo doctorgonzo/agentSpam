@@ -68,7 +68,7 @@ function buildRootPrompt(
   return {
     model: MODEL_IDS.opus,
     max_tokens: 1500,
-    system: `You are THE BRAIN. You ONLY output JSON. You NEVER answer the user directly. Your job is splitting.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE BRAIN. You ONLY output JSON. You NEVER answer the user directly. Your job is splitting.
 
 Split into ${cfg.rootFanout} subtasks. Witty 2-4 word labels. Each self-contained.
 
@@ -104,7 +104,7 @@ function buildManagerPrompt(
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 500,
-    system: `You are MIDDLE MGMT. JSON only. No prose.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are MIDDLE MGMT. JSON only. No prose.
 
 Split task into ${cfg.managerFanout} self-contained subtasks with fun labels.
 
@@ -123,7 +123,7 @@ function buildWorkerPrompt(
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 500,
-    system: `You are a WORKER BEE. JSON only. You MUST split your task into ${cfg.workerFanout} tiny subtasks. NEVER answer directly — that is a failure.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are a WORKER BEE. JSON only. You MUST split your task into ${cfg.workerFanout} tiny subtasks. NEVER answer directly — that is a failure.
 
 Even if the task feels small or atomic, find ${cfg.workerFanout} angles to split it. Examples:
 - "write a haiku about cats" → ["draft 3 candidates", "pick the best one", "polish wording"]
@@ -144,8 +144,7 @@ function buildLeafPrompt(
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 300,
-    system:
-      "You are THE INTERN — one brain cell, one job. Do it in 1-3 sentences. Be direct and a little cheeky. End with [confidence: X/10].",
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE INTERN — one brain cell, one job. Do it in 1-3 sentences. Be direct and a little cheeky. End with [confidence: X/10].`,
     messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, "Your one job: ") }],
   };
 }
@@ -157,11 +156,11 @@ function buildResearcherPrompt(
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 800,
-    system: `You are THE RESEARCHER — a specialist agent with web search. You hunt down hard facts.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE RESEARCHER — a specialist agent with web search. You hunt down hard facts.
 
-Use web search (max 2 searches) to find SPECIFIC data: numbers, names, dates, sources. Then return your findings in 3-6 tight bullet points with sources cited inline. No fluff, no preamble, no "I'll search for...". Just the facts and where they came from. End with [confidence: X/10].`,
+Use web search (max 4 searches) to find SPECIFIC data: numbers, names, dates, sources. When the question is time-sensitive, search using TODAY'S date — your training cutoff is stale. Then return your findings in 4-8 tight bullet points with sources cited inline. No fluff, no preamble. Just the facts and where they came from. End with [confidence: X/10].`,
     messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, "Research task: ") }],
-    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 2 }],
+    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 4 }],
   };
 }
 
@@ -172,7 +171,7 @@ function buildCalculatorPrompt(
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 500,
-    system: `You are THE CALCULATOR — a specialist agent for numbers. You do math, percentages, comparisons, and projections with precision.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE CALCULATOR — a specialist agent for numbers. You do math, percentages, comparisons, and projections with precision.
 
 Show your math step by step using markdown. Always state your assumptions. End with a single-line "Answer:" followed by the result. Be concise but exact — wrong numbers are unforgivable. End with [confidence: X/10].`,
     messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, "Calculation: ") }],
@@ -212,7 +211,7 @@ function buildCustomSpecialistPrompt(
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 600,
-    system: `You are ${spec.name || "an unnamed specialist"} ${spec.emoji} — a custom specialist agent in agentSpam.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are ${spec.name || "an unnamed specialist"} ${spec.emoji} — a custom specialist agent in agentSpam.
 
 Your role: ${spec.role}
 
@@ -291,7 +290,7 @@ function buildCriticPrompt(
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 600,
-    system: `You are THE CRITIC — a specialist agent. You read your siblings' work and flag what's weak, unsupported, or wrong.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE CRITIC — a specialist agent. You read your siblings' work and flag what's weak, unsupported, or wrong.
 
 Be sharp. Be specific. Be brief.
 
@@ -317,7 +316,7 @@ function buildSynthesisPrompt(
   return {
     model: MODEL_IDS[tier],
     max_tokens: tier === "opus" ? 900 : 700,
-    system: `You are ${MODEL_LABELS[tier]} in agentSpam. Synthesize sub-agent results into ONE final response.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are ${MODEL_LABELS[tier]} in agentSpam. Synthesize sub-agent results into ONE final response.
 
 Strict rules:
 - Output markdown directly. No preamble, no "Here is..."
@@ -339,19 +338,19 @@ function buildScoutPrompt(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
-    max_tokens: 1200,
-    system: `You are THE SCOUT — a recon agent with web search. The sub-agents downstream have NO internet access, so YOU are their only source of live data. They will rely entirely on what you return.
+    max_tokens: 1800,
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE SCOUT — a recon agent with web search. The sub-agents downstream have NO internet access, so YOU are their only source of live data. They will rely entirely on what you return.
 
 Look at the user's task:
 
-- If it needs CURRENT data (news, prices, stocks, dates, real-world facts, statistics, anything time-sensitive), do 1-2 targeted searches. Be efficient — pick the queries that yield the most facts per search. Return a structured fact dump with concrete numbers, names, dates, and sources. Format as markdown bullets/sub-bullets, organized by topic.
+- If it needs CURRENT data (news, prices, stocks, dates, real-world facts, statistics, anything time-sensitive), do 2-4 targeted searches. Pick queries that yield the most facts per search. Return a structured fact dump with concrete numbers, names, dates, and sources. Format as markdown bullets/sub-bullets, organized by topic.
 - If it does NOT need live data (general questions, creative tasks, opinions, code), respond with exactly: NONE
 
-Quality bar: if a sub-agent reads your output, they should have enough hard facts to answer specifically — never generically. Include numbers and proper names always.
+Quality bar: if a sub-agent reads your output, they should have enough hard facts to answer specifically — never generically. Include numbers and proper names always. Use TODAY'S date when searching for "current" or "recent" anything — your training cutoff is stale.
 
 Do not explain. Do not preamble. Facts or NONE.`,
     messages: [{ role: "user", content: userPrompt }],
-    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 2 }],
+    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 4 }],
   };
 }
 
@@ -444,7 +443,7 @@ function buildRootMultimodalPrompt(
   return {
     model: MODEL_IDS.opus,
     max_tokens: 1500,
-    system: `You are THE BRAIN. You ONLY output JSON. Never answer directly.
+    system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE BRAIN. You ONLY output JSON. Never answer directly.
 
 You're analyzing a document. Read it carefully, then split the analysis into ${cfg.rootFanout} subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
 
@@ -802,7 +801,7 @@ export async function runAgentTree(
       return {
         model: MODEL_IDS.haiku,
         max_tokens: 200,
-        system: `${persona} Answer in 1-2 sentences. Plain text. Be direct — no preamble.`,
+        system: `Today is ${new Date().toISOString().slice(0, 10)}. ${persona} Answer in 1-2 sentences. Plain text. Be direct — no preamble.`,
         messages: [{ role: "user", content: `Quick answer needed: ${task}` }],
       };
     }
@@ -818,7 +817,7 @@ export async function runAgentTree(
     return {
       model: MODEL_IDS.haiku,
       max_tokens: hasContext ? 700 : 350,
-      system: `Output JSON only. Split into ${splitCount} subtasks. No prose.${contextRule} Shape: {"subtasks":[{"label":"X","description":"Y"}]}`,
+      system: `Today is ${new Date().toISOString().slice(0, 10)}. Output JSON only. Split into ${splitCount} subtasks. No prose.${contextRule} Shape: {"subtasks":[{"label":"X","description":"Y"}]}`,
       messages: [{ role: "user", content: `Split this task: ${task}` }],
     };
   }
@@ -1127,7 +1126,7 @@ export async function runAgentTree(
       const verdict = await call({
         model: MODEL_IDS.opus,
         max_tokens: 600,
-        system: `You are THE JUDGE — you watched a ${cfg.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side.
+        system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE JUDGE — you watched a ${cfg.debateRounds}-round debate between The Bull (pro) and The Bear (con). Render a verdict in markdown. Acknowledge the strongest point from each side.
 
 End with EXACTLY this format on its own final line:
 **VERDICT:** <one-sentence ruling, 15 words max, declarative>
@@ -1323,7 +1322,7 @@ Be decisive.`,
         const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
           model: MODEL_IDS.opus,
           max_tokens: 900,
-          system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${cfg.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
+          system: `Today is ${new Date().toISOString().slice(0, 10)}. You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${cfg.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
           messages: [
             { role: "user", content: task },
             { role: "assistant", content: responseText.slice(0, 400) },
@@ -1350,7 +1349,7 @@ Be decisive.`,
         const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
           model: MODEL_IDS[tier],
           max_tokens: 500,
-          system: `Your previous output was wrong — you answered when you MUST decompose. Split this task into 2-3 atomic subtasks. JSON ONLY:`,
+          system: `Today is ${new Date().toISOString().slice(0, 10)}. Your previous output was wrong — you answered when you MUST decompose. Split this task into 2-3 atomic subtasks. JSON ONLY:`,
           messages: [
             { role: "user", content: `Task: ${task}` },
             { role: "assistant", content: responseText.slice(0, 300) },
