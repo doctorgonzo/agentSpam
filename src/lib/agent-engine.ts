@@ -823,6 +823,71 @@ export async function runAgentTree(
     };
   }
 
+  // Detect bare URLs in a string. Conservative regex — http(s) only,
+  // common URL chars, stops at whitespace or trailing punctuation.
+  function extractUrls(text: string): string[] {
+    const re = /https?:\/\/[^\s<>"`{}|\\^\[\]]+/gi;
+    const matches = text.match(re) || [];
+    // strip trailing punctuation that's likely sentence punctuation, not URL
+    return matches
+      .map((u) => u.replace(/[.,;:!?)\]]+$/, ""))
+      .filter((u, i, arr) => arr.indexOf(u) === i)
+      .slice(0, 3); // cap at 3 URLs to keep cost down
+  }
+
+  // Fetch a URL and strip HTML to plain text. Returns null on failure
+  // or non-HTML content. Conservative: 10s timeout, 1MB cap, common
+  // browser user-agent so most sites don't 403.
+  async function fetchUrlAsText(url: string): Promise<string | null> {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10_000);
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        redirect: "follow",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+      });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      const ct = res.headers.get("content-type") ?? "";
+      if (!ct.includes("text/html") && !ct.includes("text/plain") && !ct.includes("application/xhtml")) {
+        return null;
+      }
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > 1_000_000) return null; // 1MB cap
+      let html = new TextDecoder("utf-8", { fatal: false }).decode(buf);
+
+      // Strip <script>, <style>, <noscript>, <svg>, <head> entirely.
+      html = html.replace(/<(script|style|noscript|svg|head)[^>]*>[\s\S]*?<\/\1>/gi, " ");
+      // Try to focus on <article> or <main> if present
+      const articleMatch = html.match(/<(?:article|main)[^>]*>([\s\S]*?)<\/(?:article|main)>/i);
+      if (articleMatch) html = articleMatch[1];
+      // Convert block tags to newlines, then strip all remaining tags
+      html = html.replace(/<\/(p|div|li|h[1-6]|br|tr|section|article)>/gi, "\n");
+      html = html.replace(/<[^>]+>/g, "");
+      // Decode common HTML entities
+      html = html
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&[a-z]+;/gi, " ");
+      // Collapse whitespace
+      html = html.replace(/\s+/g, " ").trim();
+      // Cap output length — long articles will get truncated
+      if (html.length > 8000) html = html.slice(0, 8000) + "...";
+      return html || null;
+    } catch {
+      return null;
+    }
+  }
+
   async function runScoutLocal(p: string): Promise<string | null> {
     try {
       const text = await call(buildScoutPrompt(p));
@@ -884,6 +949,38 @@ export async function runAgentTree(
       emit({ type: "scout_complete", findings: null });
     } else {
       emit({ type: "scout_complete", findings: null });
+    }
+  } else if (prompt.trim() && extractUrls(prompt).length > 0) {
+    // User pasted one or more URLs. Fetch them directly and skip Scout —
+    // we know exactly where to look, no need to web-search.
+    emit({ type: "scout_searching" });
+    const urls = extractUrls(prompt);
+    const fetched = await Promise.all(
+      urls.map(async (u) => ({ url: u, text: await fetchUrlAsText(u) })),
+    );
+    const valid = fetched.filter((f) => f.text);
+    if (valid.length > 0) {
+      const combined =
+        valid.length === 1
+          ? `[Page content from ${valid[0].url}]:\n${valid[0].text}`
+          : `[${valid.length} pages fetched]:\n\n` +
+            valid
+              .map((e, i) => `=== Page ${i + 1}: ${e.url} ===\n${e.text}`)
+              .join("\n\n");
+      enrichedPrompt = `${prompt}\n\n${combined}`;
+      sharedContext = combined.length > 6000 ? combined.slice(0, 6000) + "..." : combined;
+      emit({ type: "scout_complete", findings: combined });
+    } else {
+      // Fetch failed for all URLs — fall through to Scout as a fallback
+      const findings = await runScoutLocal(prompt);
+      if (findings) {
+        const truncated = findings.length > 3000 ? findings.slice(0, 3000) + "..." : findings;
+        enrichedPrompt = `${prompt}\n\n[Live data from Scout — embed relevant facts into each subtask description so sub-agents can work with real data]:\n${truncated}`;
+        sharedContext = findings.length > 6000 ? findings.slice(0, 6000) + "..." : findings;
+        emit({ type: "scout_complete", findings });
+      } else {
+        emit({ type: "scout_complete", findings: null });
+      }
     }
   } else if (prompt.trim()) {
     emit({ type: "scout_searching" });
