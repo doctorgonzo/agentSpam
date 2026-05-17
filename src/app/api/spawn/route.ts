@@ -29,7 +29,13 @@ export async function POST(req: Request) {
   }
 
   const body: SpawnRequest = await req.json();
-  const { prompt, file, files, mode, role, memory, appMode } = body;
+  const { prompt, file, files, mode, role, memory } = body;
+  // Server-side enforcement: only requests with a valid demo key get
+  // demo mode. Anonymous (or bypass attempt) requests are forced to dev.
+  const appMode: "dev" | "demo" =
+    expectedKey && provided === expectedKey && body.appMode === "demo"
+      ? "demo"
+      : "dev";
 
   // Normalize to a files array — legacy single `file` still works.
   const allFiles = files && files.length > 0 ? files : file ? [file] : [];

@@ -604,8 +604,12 @@ export default function Home() {
             <button
               type="button"
               onClick={flipAppMode}
-              disabled={isRunning}
-              title={`Switch to ${appMode === "demo" ? "dev" : "demo"} mode`}
+              disabled={isRunning || accessKey === null}
+              title={
+                accessKey === null
+                  ? "Demo mode is reserved for the gated URL"
+                  : `Switch to ${appMode === "demo" ? "dev" : "demo"} mode`
+              }
               className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-full border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                 appMode === "demo"
                   ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25"
