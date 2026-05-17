@@ -287,10 +287,15 @@ export default function CyberMap() {
     };
     document.addEventListener("visibilitychange", onVisibleCanvas);
 
-    // --- Interaction handlers ---
+    // --- Interaction handlers (document-level, Alt-gated) ---
+    // The canvas sits at z-0 under a z-10 UI wrapper, so canvas-attached
+    // listeners never see pointer events. Listen on window instead and gate
+    // on the Alt key so we don't conflict with the UI.
 
     const onWheel = (e: WheelEvent) => {
+      if (!e.altKey) return;
       e.preventDefault();
+      e.stopPropagation();
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
@@ -303,7 +308,10 @@ export default function CyberMap() {
     };
 
     const onMouseDown = (e: MouseEvent) => {
+      if (!e.altKey) return;
       if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
       isDraggingRef.current = true;
       dragStartRef.current = {
         x: e.clientX,
@@ -311,7 +319,7 @@ export default function CyberMap() {
         tx: viewportRef.current.tx,
         ty: viewportRef.current.ty,
       };
-      canvas.style.cursor = "grabbing";
+      document.body.style.cursor = "grabbing";
     };
 
     const onMouseMove = (e: MouseEvent) => {
@@ -324,32 +332,52 @@ export default function CyberMap() {
     const onMouseUp = () => {
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
-      canvas.style.cursor = "grab";
+      document.body.style.cursor = "";
     };
 
     const onDblClick = (e: MouseEvent) => {
+      if (!e.altKey) return;
       e.preventDefault();
+      e.stopPropagation();
       viewportRef.current.scale = 1;
       viewportRef.current.tx = 0;
       viewportRef.current.ty = 0;
     };
 
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    canvas.addEventListener("mousedown", onMouseDown);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && !isDraggingRef.current) {
+        document.body.style.cursor = "grab";
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!e.altKey && !isDraggingRef.current) {
+        document.body.style.cursor = "";
+      }
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-    canvas.addEventListener("dblclick", onDblClick);
+    window.addEventListener("dblclick", onDblClick);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
 
     return () => {
       mounted = false;
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibleCanvas);
-      canvas.removeEventListener("wheel", onWheel);
-      canvas.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
-      canvas.removeEventListener("dblclick", onDblClick);
+      window.removeEventListener("dblclick", onDblClick);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      // Restore cursor in case Alt was held when component unmounted.
+      document.body.style.cursor = "";
     };
   }, []);
 
@@ -362,8 +390,7 @@ export default function CyberMap() {
         inset: 0,
         width: "100vw",
         height: "100vh",
-        pointerEvents: "auto",
-        cursor: "grab",
+        pointerEvents: "none",
         zIndex: 0,
         display: "block",
       }}
