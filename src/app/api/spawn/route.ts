@@ -8,11 +8,15 @@ export const maxDuration = 300;
 
 export async function POST(req: Request) {
   // Demo token gate. Anonymous requests are allowed (and forced to dev
-  // mode client-side). If a key IS provided, it must match the server's
-  // DEMO_KEY env var — wrong key gets 403.
-  const expectedKey = process.env.DEMO_KEY;
+  // mode client-side). If a key IS provided, it must match one of the
+  // server's DEMO_KEY values (comma-separated) — wrong key gets 403.
+  const expectedKeys = (process.env.DEMO_KEY ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const provided = req.headers.get("x-demo-key");
-  if (expectedKey && provided && provided !== expectedKey) {
+  const keyValid = !!provided && expectedKeys.includes(provided);
+  if (expectedKeys.length > 0 && provided && !keyValid) {
     return new Response(
       JSON.stringify({ error: "Wrong demo key" }),
       { status: 403 },
@@ -24,9 +28,7 @@ export async function POST(req: Request) {
   // Server-side enforcement: only requests with a valid demo key get
   // demo mode. Anonymous (or bypass attempt) requests are forced to dev.
   const appMode: "dev" | "demo" =
-    expectedKey && provided === expectedKey && body.appMode === "demo"
-      ? "demo"
-      : "dev";
+    keyValid && body.appMode === "demo" ? "demo" : "dev";
 
   // Per-mode daily budget cap (dev and demo have separate buckets).
   const status = budgetStatus(appMode);

@@ -13,17 +13,20 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // is to give the user's tree something honest to be measured against.
 export async function POST(req: Request) {
   // Anonymous requests allowed. Wrong-key requests blocked.
-  const expectedKey = process.env.DEMO_KEY;
+  const expectedKeys = (process.env.DEMO_KEY ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const provided = req.headers.get("x-demo-key");
-  if (expectedKey && provided && provided !== expectedKey) {
+  const keyValid = !!provided && expectedKeys.includes(provided);
+  if (expectedKeys.length > 0 && provided && !keyValid) {
     return new Response(JSON.stringify({ error: "Wrong demo key" }), {
       status: 403,
     });
   }
   // The solo call runs alongside whatever tree the user is running, so
   // charge it to the same bucket the tree uses.
-  const solomode: "dev" | "demo" =
-    expectedKey && provided === expectedKey ? "demo" : "dev";
+  const solomode: "dev" | "demo" = keyValid ? "demo" : "dev";
 
   const status = budgetStatus(solomode);
   if (!status.allowed) {
