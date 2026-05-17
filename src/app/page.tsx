@@ -206,12 +206,13 @@ export default function Home() {
   }
   const [actions, setActions] = useState<ProposedAction[]>([]);
 
+  // Clear any stale localStorage from when the toggle still wrote there.
+  // Mode is now derived purely from URL key presence.
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("agentSpam.appMode");
-      if (saved === "demo" || saved === "dev") setAppMode(saved);
+      localStorage.removeItem("agentSpam.appMode");
     } catch {
-      // localStorage might be unavailable
+      // ignore
     }
   }, []);
 
