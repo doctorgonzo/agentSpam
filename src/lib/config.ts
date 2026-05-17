@@ -21,8 +21,8 @@ export const MODES: Record<AppMode, ModeConfig> = {
     workerFanout: "2-3",
     fallbackSplitRoot: 3,
     fallbackSplitChild: 2,
-    enableDebate: false,
-    debateRounds: 0,
+    enableDebate: true,
+    debateRounds: 3,
   },
   demo: {
     maxDepth: 5,
