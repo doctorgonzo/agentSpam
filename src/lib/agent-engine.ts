@@ -67,7 +67,7 @@ function buildRootPrompt(
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.opus,
-    max_tokens: 700,
+    max_tokens: 1200,
     system: `You are THE BRAIN. You ONLY output JSON. You NEVER answer the user directly. Your job is splitting.
 
 Split into ${cfg.rootFanout} subtasks. Witty 2-4 word labels. Each self-contained.
@@ -452,7 +452,7 @@ function buildRootMultimodalPrompt(
 
   return {
     model: MODEL_IDS.opus,
-    max_tokens: 900,
+    max_tokens: 1200,
     system: `You are THE BRAIN. You ONLY output JSON. Never answer directly.
 
 You're analyzing a document. Read it carefully, then split the analysis into ${cfg.rootFanout} subtasks. Each subtask description MUST include the actual content from the document the sub-agent needs — names, quotes, numbers, full sections. Sub-agents have no access to the file.
@@ -1331,7 +1331,7 @@ Be decisive.`,
       if (depth === 0 && parsed.type !== "subtasks") {
         const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
           model: MODEL_IDS.opus,
-          max_tokens: 500,
+          max_tokens: 900,
           system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${cfg.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
           messages: [
             { role: "user", content: task },
