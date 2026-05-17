@@ -61,7 +61,7 @@ export default function BackgroundFX_v3() {
       width: "100vw",
       height: "100vh",
       pointerEvents: "none",
-      zIndex: "0",
+      zIndex: "1",
       display: "block",
     } as CSSStyleDeclaration);
     canvas.setAttribute("aria-hidden", "true");
