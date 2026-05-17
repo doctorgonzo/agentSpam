@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { feature } from "topojson-client";
 import { geoEquirectangular, geoPath, GeoPath, GeoProjection } from "d3-geo";
-import type { Feature, FeatureCollection, Geometry } from "geojson";
+import type { FeatureCollection, Geometry } from "geojson";
 
 interface Ping {
   lat: number;
@@ -64,11 +64,20 @@ function getOrCreateSessionId(): string {
   }
 }
 
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 export default function CyberMap() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [data, setData] = useState<PresenceData>({ active: [], recent: [], now: Date.now() });
   const dataRef = useRef(data);
   dataRef.current = data;
+
+  // Viewport (zoom/pan) state — refs so they don't trigger re-renders on every frame.
+  const viewportRef = useRef({ scale: 1, tx: 0, ty: 0 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
   // Heartbeat + poll loops.
   useEffect(() => {
@@ -171,10 +180,11 @@ export default function CyberMap() {
 
     function drawMap() {
       if (!world || !pathGen) return;
+      const s = viewportRef.current.scale;
       // Outer subtle glow pass: draw thick & blurred for the bloom.
       ctx!.save();
       ctx!.strokeStyle = MAP_GLOW;
-      ctx!.lineWidth = 2.5;
+      ctx!.lineWidth = 2.5 / s;
       ctx!.shadowBlur = 8;
       ctx!.shadowColor = MAP_GLOW;
       ctx!.beginPath();
@@ -183,7 +193,7 @@ export default function CyberMap() {
       // Crisp inner line.
       ctx!.shadowBlur = 0;
       ctx!.strokeStyle = MAP_STROKE;
-      ctx!.lineWidth = 0.75;
+      ctx!.lineWidth = 0.75 / s;
       ctx!.beginPath();
       pathGen(world);
       ctx!.stroke();
@@ -202,14 +212,17 @@ export default function CyberMap() {
       const xy = projection([lng, lat]);
       if (!xy) return;
       const [x, y] = xy;
+      const s = viewportRef.current.scale;
+      // Inverse-scale radius so markers stay visually constant at any zoom.
+      const r = radius / s;
       // Pulse ring (only for active).
       if (pulseT !== null) {
-        const ringR = radius + pulseT * 14;
+        const ringR = r + (pulseT * 14) / s;
         const ringA = (1 - pulseT) * 0.7;
         ctx!.save();
         ctx!.strokeStyle = color;
         ctx!.globalAlpha = ringA;
-        ctx!.lineWidth = 1.5;
+        ctx!.lineWidth = 1.5 / s;
         ctx!.shadowBlur = 12;
         ctx!.shadowColor = glow;
         ctx!.beginPath();
@@ -223,15 +236,22 @@ export default function CyberMap() {
       ctx!.shadowBlur = pulseT !== null ? 14 : 6;
       ctx!.shadowColor = glow;
       ctx!.beginPath();
-      ctx!.arc(x, y, radius, 0, Math.PI * 2);
+      ctx!.arc(x, y, r, 0, Math.PI * 2);
       ctx!.fill();
       ctx!.restore();
     }
 
     function step(t: number) {
       if (!ctx) return;
-      // Fully clear — we want crisp map + markers, no smear like the rain has.
-      ctx.clearRect(0, 0, width, height);
+      // Clear in screen-space BEFORE applying viewport transform.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Apply DPR, then viewport translate, then viewport scale.
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.translate(viewportRef.current.tx, viewportRef.current.ty);
+      ctx.scale(viewportRef.current.scale, viewportRef.current.scale);
+
       drawMap();
       const d = dataRef.current;
       // Recent (drawn first, under active).
@@ -246,6 +266,7 @@ export default function CyberMap() {
         const pulseT = (((t + i * 380) % cyclePeriod) / cyclePeriod);
         drawMarker(p.lng, p.lat, ACTIVE_COLOR, ACTIVE_GLOW, 3.2, pulseT);
       }
+      ctx.restore();
       raf = requestAnimationFrame(step);
     }
 
@@ -260,17 +281,75 @@ export default function CyberMap() {
     const onResize = () => resize();
     window.addEventListener("resize", onResize);
 
-    const onVisible = () => {
+    const onVisibleCanvas = () => {
       if (document.hidden) cancelAnimationFrame(raf);
       else raf = requestAnimationFrame(step);
     };
-    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onVisibleCanvas);
+
+    // --- Interaction handlers ---
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const vp = viewportRef.current;
+      const newScale = clamp(vp.scale * (1 - e.deltaY * 0.001), 1, 8);
+      // Keep the point under the cursor stationary while zooming.
+      vp.tx = mx - (newScale * (mx - vp.tx)) / vp.scale;
+      vp.ty = my - (newScale * (my - vp.ty)) / vp.scale;
+      vp.scale = newScale;
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      isDraggingRef.current = true;
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        tx: viewportRef.current.tx,
+        ty: viewportRef.current.ty,
+      };
+      canvas.style.cursor = "grabbing";
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const ds = dragStartRef.current;
+      viewportRef.current.tx = ds.tx + (e.clientX - ds.x);
+      viewportRef.current.ty = ds.ty + (e.clientY - ds.y);
+    };
+
+    const onMouseUp = () => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      canvas.style.cursor = "grab";
+    };
+
+    const onDblClick = (e: MouseEvent) => {
+      e.preventDefault();
+      viewportRef.current.scale = 1;
+      viewportRef.current.tx = 0;
+      viewportRef.current.ty = 0;
+    };
+
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    canvas.addEventListener("dblclick", onDblClick);
 
     return () => {
       mounted = false;
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", onVisibleCanvas);
+      canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      canvas.removeEventListener("dblclick", onDblClick);
     };
   }, []);
 
@@ -283,7 +362,8 @@ export default function CyberMap() {
         inset: 0,
         width: "100vw",
         height: "100vh",
-        pointerEvents: "none",
+        pointerEvents: "auto",
+        cursor: "grab",
         zIndex: 0,
         display: "block",
       }}
