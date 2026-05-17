@@ -5,6 +5,13 @@ import ReactMarkdown from "react-markdown";
 import { ProposedAction, WORKER_ROLES } from "@/lib/types";
 import ActionsPanel from "@/components/ActionsPanel";
 
+interface SpecialistResult {
+  label: string;
+  emoji?: string;
+  role?: string;
+  result: string;
+}
+
 interface ResultPanelProps {
   result: string | null;
   agentCount: number;
@@ -17,6 +24,7 @@ interface ResultPanelProps {
   actions?: ProposedAction[];
   soloResult?: string | null;
   soloElapsedMs?: number | null;
+  specialistResults?: SpecialistResult[];
 }
 
 export default function ResultPanel({
@@ -31,8 +39,10 @@ export default function ResultPanel({
   actions = [],
   soloResult,
   soloElapsedMs,
+  specialistResults = [],
 }: ResultPanelProps) {
   const [copied, setCopied] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   if (!result) return null;
 
@@ -184,6 +194,46 @@ export default function ResultPanel({
           ) : (
             <div className="prose prose-invert prose-base max-w-none prose-headings:text-purple-200 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-white prose-p:text-white/80 prose-p:leading-relaxed prose-li:text-white/80 prose-code:text-purple-300 prose-hr:border-white/10 prose-a:text-purple-400">
               <ReactMarkdown>{result}</ReactMarkdown>
+            </div>
+          )}
+
+          {specialistResults.length > 0 && (
+            <div className="mt-6 pt-5 border-t border-white/10">
+              <button
+                onClick={() => setShowDetails((v) => !v)}
+                className="text-purple-300 hover:text-purple-200 text-xs font-mono uppercase tracking-widest bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 px-3 py-1.5 rounded-lg transition-all"
+              >
+                {showDetails
+                  ? "Hide agent findings"
+                  : `Show all agent findings (${specialistResults.length})`}
+              </button>
+              {showDetails && (
+                <div className="mt-4 space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                  {specialistResults.map((sr, i) => (
+                    <div
+                      key={`${sr.label}-${i}`}
+                      className="bg-white/[0.03] border border-white/10 rounded-xl p-4"
+                    >
+                      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
+                        {sr.emoji && (
+                          <span className="text-base leading-none">{sr.emoji}</span>
+                        )}
+                        <div className="text-purple-300 text-[10px] uppercase tracking-widest font-bold">
+                          {sr.label}
+                        </div>
+                        {sr.role && (
+                          <div className="text-white/30 text-[10px] uppercase tracking-wider">
+                            · {sr.role}
+                          </div>
+                        )}
+                      </div>
+                      <div className="prose prose-invert prose-sm max-w-none prose-headings:text-purple-200 prose-strong:text-white prose-p:text-white/75 prose-p:leading-relaxed prose-li:text-white/75 prose-code:text-purple-300 prose-hr:border-white/10 prose-a:text-purple-400">
+                        <ReactMarkdown>{sr.result}</ReactMarkdown>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

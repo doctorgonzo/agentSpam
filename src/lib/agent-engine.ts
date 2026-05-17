@@ -320,15 +320,16 @@ function buildSynthesisPrompt(
 
   return {
     model: MODEL_IDS[tier],
-    max_tokens: tier === "opus" ? 900 : 700,
-    system: `You are ${MODEL_LABELS[tier]} in agentSpam. Synthesize sub-agent results into ONE final response.
+    max_tokens: tier === "opus" ? 1800 : 1500,
+    system: `You are ${MODEL_LABELS[tier]} in agentSpam. Synthesize sub-agent results into ONE comprehensive final response.
 
-Strict rules:
+Rules:
 - Output markdown directly. No preamble, no "Here is..."
-- Max 3-4 short paragraphs OR a tight bulleted answer
-- Weave findings together, don't list them
-- If a Critic flagged issues, address them briefly
-- BE BRIEF. Quality over length.`,
+- Use section headers (##) to organize the response into logical sections
+- Under each section, use bullet points with substantive detail (not one-liners)
+- Weave findings together — don't just list what each sub-agent said
+- If a Critic flagged issues, address them in their own section
+- Aim for a thorough consultant-style report, not a TL;DR. Length is OK when it earns its place.`,
     messages: [
       {
         role: "user",

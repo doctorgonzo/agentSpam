@@ -577,6 +577,26 @@ export default function Home() {
 
   const hasAgents = agents.size > 0;
 
+  const specialistResults = useMemo(() => {
+    const out: Array<{
+      label: string;
+      emoji?: string;
+      role?: string;
+      result: string;
+    }> = [];
+    agents.forEach((agent) => {
+      if (!agent.result) return;
+      if (!agent.specialty && !agent.customSpecialist) return;
+      out.push({
+        label: agent.label,
+        emoji: agent.customSpecialist?.emoji,
+        role: agent.customSpecialist?.role,
+        result: agent.result || "",
+      });
+    });
+    return out;
+  }, [agents]);
+
   return (
     <div className="relative flex flex-col h-screen bg-transparent text-white overflow-hidden isolate">
       <CyberMap />
@@ -852,6 +872,7 @@ export default function Home() {
           actions={actions}
           soloResult={soloResult}
           soloElapsedMs={soloElapsedMs}
+          specialistResults={specialistResults}
         />
       )}
 
