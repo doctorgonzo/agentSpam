@@ -156,10 +156,16 @@ export default function BackgroundFX_v3() {
       if (!ctx) return;
       frame++;
 
-      // Soft trail: don't fully clear — paint a translucent dark rect so
-      // previous glyphs fade out, giving the rain its signature tail.
-      ctx.fillStyle = "rgba(9, 9, 11, 0.18)";
+      // Soft trail: use destination-out to fade existing pixels TOWARD
+      // transparent (not toward black). This keeps the matrix canvas
+      // see-through so the CyberMap layer behind it stays visible.
+      // Previously we painted a translucent black rect, which accumulated
+      // into a solid black layer that obscured everything underneath.
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
       ctx.fillRect(0, 0, width, height);
+      ctx.restore();
 
       // ---- Pulse rings (drawn first so rain sits on top) ----
       if (frame % 180 === 0) spawnRing();
