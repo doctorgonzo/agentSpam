@@ -27,6 +27,7 @@ import DetailPanel from "@/components/DetailPanel";
 import ActionsPanel from "@/components/ActionsPanel";
 import BackgroundFX from "@/components/BackgroundFX_v3";
 import CyberMap from "@/components/CyberMap";
+import PresenceCounter from "@/components/PresenceCounter";
 
 interface DemoPrompt {
   emoji: string;
@@ -600,6 +601,7 @@ export default function Home() {
   return (
     <div className="relative flex flex-col h-screen bg-transparent text-white overflow-hidden isolate">
       <CyberMap />
+      <PresenceCounter />
       <BackgroundFX />
       <div className="relative z-10 flex flex-col flex-1 min-h-0">
       {/* Header */}

@@ -1,5 +1,7 @@
+import crypto from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { budgetStatus, recordCost } from "@/lib/budget";
+import { pingPresence } from "@/lib/presence";
 
 export const maxDuration = 60;
 
@@ -39,6 +41,31 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "Need a prompt" }), {
       status: 400,
     });
+  }
+
+  // Fire-and-forget presence ping — single-Claude users should also show
+  // up on the map. Same IP-hash scheme as /api/spawn.
+  try {
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "unknown";
+    const sessionId = `spawn:${crypto.createHash("md5").update(ip).digest("hex").slice(0, 12)}`;
+    const lat = parseFloat(req.headers.get("x-vercel-ip-latitude") ?? "");
+    const lng = parseFloat(req.headers.get("x-vercel-ip-longitude") ?? "");
+    const city = req.headers.get("x-vercel-ip-city");
+    const country = req.headers.get("x-vercel-ip-country");
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      pingPresence({
+        sessionId,
+        lat,
+        lng,
+        city: city ? decodeURIComponent(city) : undefined,
+        country: country || undefined,
+      });
+    }
+  } catch {
+    // never let presence break the solo call
   }
 
   const startedAt = Date.now();

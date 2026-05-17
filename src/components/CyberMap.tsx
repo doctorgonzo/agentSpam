@@ -79,6 +79,19 @@ export default function CyberMap() {
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
 
+  // Projection ref so the click handler can read the latest projection without
+  // re-running the canvas effect on every state change.
+  const projectionRef = useRef<GeoProjection | null>(null);
+
+  // Tooltip state for Alt+click on a presence dot.
+  const [tooltip, setTooltip] = useState<{
+    x: number;
+    y: number;
+    city?: string;
+    country?: string;
+  } | null>(null);
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Heartbeat + poll loops.
   useEffect(() => {
     const sessionId = getOrCreateSessionId();
@@ -162,6 +175,7 @@ export default function CyberMap() {
         world,
       );
       projection = proj;
+      projectionRef.current = proj;
       pathGen = geoPath(proj, ctx!);
     }
 
@@ -344,7 +358,66 @@ export default function CyberMap() {
       viewportRef.current.ty = 0;
     };
 
+    const onClick = (e: MouseEvent) => {
+      if (!e.altKey) return;
+      if (!canvasRef.current || !projectionRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = canvasRef.current.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const vp = viewportRef.current;
+      const proj = projectionRef.current;
+
+      const pings = [
+        ...dataRef.current.active,
+        ...dataRef.current.recent,
+      ];
+
+      let closest: { ping: Ping; dist: number } | null = null;
+      for (const p of pings) {
+        const xy = proj([p.lng, p.lat]);
+        if (!xy) continue;
+        const sx = xy[0] * vp.scale + vp.tx;
+        const sy = xy[1] * vp.scale + vp.ty;
+        const dx = sx - cx;
+        const dy = sy - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= 15 && (!closest || dist < closest.dist)) {
+          closest = { ping: p, dist };
+        }
+      }
+
+      if (tooltipTimerRef.current) {
+        clearTimeout(tooltipTimerRef.current);
+        tooltipTimerRef.current = null;
+      }
+
+      if (closest) {
+        setTooltip({
+          x: e.clientX,
+          y: e.clientY,
+          city: closest.ping.city,
+          country: closest.ping.country,
+        });
+        tooltipTimerRef.current = setTimeout(() => {
+          setTooltip(null);
+          tooltipTimerRef.current = null;
+        }, 4000);
+      } else {
+        setTooltip(null);
+      }
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (tooltipTimerRef.current) {
+          clearTimeout(tooltipTimerRef.current);
+          tooltipTimerRef.current = null;
+        }
+        setTooltip(null);
+      }
       if (e.altKey && !isDraggingRef.current) {
         document.body.style.cursor = "grab";
       }
@@ -361,6 +434,7 @@ export default function CyberMap() {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("dblclick", onDblClick);
+    document.addEventListener("click", onClick, true);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
@@ -374,26 +448,70 @@ export default function CyberMap() {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
       window.removeEventListener("dblclick", onDblClick);
+      document.removeEventListener("click", onClick, true);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      if (tooltipTimerRef.current) {
+        clearTimeout(tooltipTimerRef.current);
+        tooltipTimerRef.current = null;
+      }
       // Restore cursor in case Alt was held when component unmounted.
       document.body.style.cursor = "";
     };
   }, []);
 
+  const tooltipLabel = (() => {
+    if (!tooltip) return "";
+    const city = tooltip.city && tooltip.city !== "Unknown" ? tooltip.city : "";
+    const country =
+      tooltip.country && tooltip.country !== "Unknown" ? tooltip.country : "";
+    if (city && country) return `${city}, ${country}`;
+    if (country) return country;
+    if (city) return city;
+    return "Unknown";
+  })();
+
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        width: "100vw",
-        height: "100vh",
-        pointerEvents: "none",
-        zIndex: 0,
-        display: "block",
-      }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100vw",
+          height: "100vh",
+          pointerEvents: "none",
+          zIndex: 0,
+          display: "block",
+        }}
+      />
+      {tooltip && (
+        <div
+          role="tooltip"
+          style={{
+            position: "fixed",
+            left: tooltip.x + 12,
+            top: tooltip.y + 12,
+            pointerEvents: "none",
+            zIndex: 60,
+            padding: "4px 8px",
+            background: "rgba(10, 6, 18, 0.92)",
+            border: "1px solid rgba(217, 70, 239, 0.55)",
+            boxShadow: "0 0 12px rgba(217, 70, 239, 0.35)",
+            color: "rgba(232, 215, 255, 0.95)",
+            fontFamily:
+              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            fontSize: 11,
+            lineHeight: 1.2,
+            letterSpacing: "0.02em",
+            borderRadius: 4,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tooltipLabel}
+        </div>
+      )}
+    </>
   );
 }
