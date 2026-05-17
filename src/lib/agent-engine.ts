@@ -863,15 +863,13 @@ export async function runAgentTree(
 
       // Strip <script>, <style>, <noscript>, <svg>, <head> entirely.
       html = html.replace(/<(script|style|noscript|svg|head)[^>]*>[\s\S]*?<\/\1>/gi, " ");
-      // Try to focus on <article>/<main> blocks if present. Many sites
-      // (Letterboxd, blogs with lists) wrap EACH item in its own <article>,
-      // so we need ALL matches concatenated, not just the first.
-      const articleMatches = html.match(
-        /<(?:article|main)[^>]*>[\s\S]*?<\/(?:article|main)>/gi,
+      // Strip nav/footer/header/aside since they're usually boilerplate.
+      // Keep the rest — sites use too many different layout patterns for
+      // a "focus on <article>" heuristic to work reliably.
+      html = html.replace(
+        /<(nav|footer|header|aside)[^>]*>[\s\S]*?<\/\1>/gi,
+        " ",
       );
-      if (articleMatches && articleMatches.length > 0) {
-        html = articleMatches.join("\n\n");
-      }
       // Convert block tags to newlines, then strip all remaining tags
       html = html.replace(/<\/(p|div|li|h[1-6]|br|tr|section|article)>/gi, "\n");
       html = html.replace(/<[^>]+>/g, "");
