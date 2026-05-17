@@ -10,15 +10,13 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // prompt straight to messages.create. The whole point of this endpoint
 // is to give the user's tree something honest to be measured against.
 export async function POST(req: Request) {
-  // Demo token gate.
+  // Anonymous requests allowed. Wrong-key requests blocked.
   const expectedKey = process.env.DEMO_KEY;
-  if (expectedKey) {
-    const provided = req.headers.get("x-demo-key");
-    if (provided !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Demo access required" }), {
-        status: 403,
-      });
-    }
+  const provided = req.headers.get("x-demo-key");
+  if (expectedKey && provided && provided !== expectedKey) {
+    return new Response(JSON.stringify({ error: "Wrong demo key" }), {
+      status: 403,
+    });
   }
 
   // Daily budget cap.

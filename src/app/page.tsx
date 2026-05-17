@@ -136,6 +136,10 @@ export default function Home() {
       // Anyone arriving via the gated URL (i.e. judges) always gets demo
       // mode for the session, regardless of what localStorage had.
       setAppMode("demo");
+    } else {
+      // Anonymous visitors are stuck in dev mode so runs stay cheap.
+      // The toggle still works for the session but URL takes precedence on load.
+      setAppMode("dev");
     }
   }, []);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -236,8 +240,6 @@ export default function Home() {
     },
     [],
   );
-
-  const gateOpen = accessKey !== null;
 
   const handleSelectAgent = useCallback((id: string) => {
     setSelectedAgentId((prev) => (prev === id || !id ? null : id));
@@ -775,19 +777,6 @@ export default function Home() {
                 produces something brilliant.
               </p>
             </div>
-            {!gateOpen && (
-              <div className="w-full max-w-2xl px-5 py-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm">
-                <div className="font-bold mb-1 flex items-center gap-2">
-                  <span>{"\u{1F512}"}</span> Demo access required
-                </div>
-                <div className="text-amber-200/80 text-xs leading-relaxed">
-                  This is a public demo of a hackathon project running on a tight API budget.
-                  Inputs are disabled without an access key. If you&apos;re a judge, the link in the
-                  contest submission includes one. Otherwise you can still poke around the tree of
-                  any past run.
-                </div>
-              </div>
-            )}
             <div className="w-full max-w-3xl flex flex-col items-center gap-3">
               <div className="text-white/40 text-xs uppercase tracking-widest">
                 Or try one of these
@@ -797,7 +786,7 @@ export default function Home() {
                   <button
                     key={d.title}
                     onClick={() => handleSubmit(d.prompt, [], d.mode, d.role)}
-                    disabled={isRunning || !gateOpen}
+                    disabled={isRunning}
                     className="group text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/40 rounded-xl p-4 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <div className="text-2xl mb-2">{d.emoji}</div>
@@ -811,12 +800,12 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <InputPanel onSubmit={handleSubmit} onStop={handleStop} isRunning={isRunning || !gateOpen} />
+            <InputPanel onSubmit={handleSubmit} onStop={handleStop} isRunning={isRunning} />
           </div>
         ) : (
           <>
             <div className="flex-none p-4 pb-2">
-              <InputPanel onSubmit={handleSubmit} onStop={handleStop} isRunning={isRunning || !gateOpen} />
+              <InputPanel onSubmit={handleSubmit} onStop={handleStop} isRunning={isRunning} />
             </div>
 
             <div className="flex-1 min-h-[300px] relative">

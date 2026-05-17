@@ -5,17 +5,16 @@ import { budgetStatus, recordCost } from "@/lib/budget";
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
-  // Demo token gate. If DEMO_KEY is set on the server, require it in
-  // x-demo-key header. If unset, no gate (dev mode).
+  // Demo token gate. Anonymous requests are allowed (and forced to dev
+  // mode client-side). If a key IS provided, it must match the server's
+  // DEMO_KEY env var — wrong key gets 403.
   const expectedKey = process.env.DEMO_KEY;
-  if (expectedKey) {
-    const provided = req.headers.get("x-demo-key");
-    if (provided !== expectedKey) {
-      return new Response(
-        JSON.stringify({ error: "Demo access required" }),
-        { status: 403 },
-      );
-    }
+  const provided = req.headers.get("x-demo-key");
+  if (expectedKey && provided && provided !== expectedKey) {
+    return new Response(
+      JSON.stringify({ error: "Wrong demo key" }),
+      { status: 403 },
+    );
   }
 
   // Daily budget cap check.
