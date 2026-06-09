@@ -80,7 +80,9 @@ function providerErrorMessage(err: unknown): string {
   return detail ? `${fallback}: ${detail}` : fallback;
 }
 
-function extractText(response: Anthropic.Message | ChatCompletionLike): string {
+function extractText(response: Anthropic.Message | ChatCompletionLike | string): string {
+  if (typeof response === "string") return response.trim();
+
   const anthropicContent = (response as Anthropic.Message).content;
   if (Array.isArray(anthropicContent)) {
     return anthropicContent
@@ -124,11 +126,11 @@ export async function callModel(
   params: AIMessageCreateParamsNonStreaming,
   options?: { signal?: AbortSignal },
 ): Promise<AIResult> {
-  let response: Anthropic.Message | ChatCompletionLike;
+  let response: Anthropic.Message | ChatCompletionLike | string;
   try {
     response = await getClient().messages.create(params, {
       signal: options?.signal,
-    }) as Anthropic.Message | ChatCompletionLike;
+    }) as Anthropic.Message | ChatCompletionLike | string;
   } catch (err) {
     const normalized = new Error(providerErrorMessage(err)) as Error & {
       status?: number;
