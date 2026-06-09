@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { AIMessageCreateParamsNonStreaming, callModel } from "./ai-client";
 import {
   AgentEvent,
   AgentNode,
@@ -15,13 +15,11 @@ import {
 } from "./types";
 import { resolveConfig } from "./config";
 
-interface ClaudeResult {
+interface AIProviderResult {
   text: string;
   cost: number;
   outputTokens: number;
 }
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 let agentCounter = 0;
 
@@ -64,7 +62,7 @@ function buildRootPrompt(
   userPrompt: string,
   mode: MissionMode | undefined,
   cfg: { rootFanout: string },
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.opus,
     max_tokens: 1500,
@@ -105,7 +103,7 @@ OUTPUT FORMAT — nothing else:
 function buildManagerPrompt(
   task: string,
   cfg: { managerFanout: string },
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 500,
@@ -124,7 +122,7 @@ JSON now:
 function buildWorkerPrompt(
   task: string,
   cfg: { workerFanout: string },
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 500,
@@ -145,7 +143,7 @@ JSON now:
 function buildLeafPrompt(
   task: string,
   sharedContext?: string | null,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 300,
@@ -157,22 +155,21 @@ function buildLeafPrompt(
 function buildResearcherPrompt(
   task: string,
   sharedContext?: string | null,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 800,
-    system: `You are THE RESEARCHER — a specialist agent with web search. You hunt down hard facts.
+    system: `You are THE RESEARCHER — a specialist agent for hard facts.
 
-Use web search (max 4 searches) to find SPECIFIC data: numbers, names, dates, sources. When the question is time-sensitive, search using TODAY'S date — your training cutoff is stale. Then return your findings in 4-8 tight bullet points with sources cited inline. No fluff, no preamble. Just the facts and where they came from. End with [confidence: X/10].`,
+This deployment does not provide a hosted web-search tool. Use only the task text and any provided source material. If the question requires current/live facts you do not have, say that directly and list the exact facts that need verification. Return 4-8 tight bullet points. No fluff, no preamble. End with [confidence: X/10].`,
     messages: [{ role: "user", content: buildCachedUserContent(task, sharedContext, `Today is ${new Date().toISOString().slice(0, 10)}.\n\nResearch task: `) }],
-    tools: [{ type: "web_search_20250305" as const, name: "web_search", max_uses: 4 }],
   };
 }
 
 function buildCalculatorPrompt(
   task: string,
   sharedContext?: string | null,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 500,
@@ -191,7 +188,7 @@ function buildCachedUserContent(
   task: string,
   sharedContext: string | null | undefined,
   taskPrefix: string,
-): Anthropic.MessageCreateParamsNonStreaming["messages"][0]["content"] {
+): AIMessageCreateParamsNonStreaming["messages"][0]["content"] {
   if (!sharedContext) {
     return taskPrefix + task;
   }
@@ -212,7 +209,7 @@ function buildCustomSpecialistPrompt(
   task: string,
   spec: CustomSpecialist,
   sharedContext?: string | null,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.sonnet,
     max_tokens: 600,
@@ -235,7 +232,7 @@ End with [confidence: X/10].`,
 function buildGistPrompt(
   userPrompt: string,
   synthesis: string,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 60,
@@ -252,7 +249,7 @@ function buildGistPrompt(
 
 function buildNamePickerPrompt(
   spec: CustomSpecialist,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 30,
@@ -269,7 +266,7 @@ function buildNamePickerPrompt(
 
 function buildBrainNamerPrompt(
   taskPrompt: string,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 20,
@@ -287,7 +284,7 @@ function buildBrainNamerPrompt(
 function buildCriticPrompt(
   task: string,
   siblingResults: { label: string; result: string }[],
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   const siblingText = siblingResults
     .map((r) => `### ${r.label}\n${r.result}`)
     .join("\n\n");
@@ -313,7 +310,7 @@ function buildSynthesisPrompt(
   originalTask: string,
   childResults: { label: string; result: string }[],
   tier: ModelTier,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   const resultsText = childResults
     .map((r) => `[${r.label}]: ${r.result}`)
     .join("\n\n");
@@ -341,7 +338,7 @@ Rules:
 
 function buildScoutPrompt(
   userPrompt: string,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS.haiku,
     max_tokens: 1800,
@@ -379,8 +376,8 @@ Do not explain. Do not preamble. Facts or NONE.`,
 function buildDocExtractorPrompt(
   userPrompt: string,
   file: FileAttachment,
-): Anthropic.MessageCreateParamsNonStreaming {
-  const content: Anthropic.MessageCreateParamsNonStreaming["messages"][0]["content"] =
+): AIMessageCreateParamsNonStreaming {
+  const content: AIMessageCreateParamsNonStreaming["messages"][0]["content"] =
     [];
 
   if (file.mediaType.startsWith("image/")) {
@@ -427,8 +424,8 @@ function buildRootMultimodalPrompt(
   file: FileAttachment,
   mode: MissionMode | undefined,
   cfg: { rootFanout: string },
-): Anthropic.MessageCreateParamsNonStreaming {
-  const content: Anthropic.MessageCreateParamsNonStreaming["messages"][0]["content"] =
+): AIMessageCreateParamsNonStreaming {
+  const content: AIMessageCreateParamsNonStreaming["messages"][0]["content"] =
     [];
 
   if (file.mediaType.startsWith("image/")) {
@@ -505,7 +502,7 @@ function buildRetryPrompt(
   task: string,
   previousAttempt: string,
   tier: ModelTier,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   const upgradedTier = tier === "haiku" ? "sonnet" : tier;
   return {
     model: MODEL_IDS[upgradedTier],
@@ -586,7 +583,7 @@ function buildEscalationPrompt(
   task: string,
   previousAnswer: string,
   newTier: ModelTier,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS[newTier],
     max_tokens: 600,
@@ -608,7 +605,7 @@ function buildSelfReviewPrompt(
   task: string,
   answer: string,
   tier: ModelTier,
-): Anthropic.MessageCreateParamsNonStreaming {
+): AIMessageCreateParamsNonStreaming {
   return {
     model: MODEL_IDS[tier],
     max_tokens: 500,
@@ -661,10 +658,10 @@ function waitForSlot(signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function callClaude(
-  params: Anthropic.MessageCreateParamsNonStreaming,
+async function callAIProvider(
+  params: AIMessageCreateParamsNonStreaming,
   signal?: AbortSignal,
-): Promise<ClaudeResult> {
+): Promise<AIProviderResult> {
   if (signal?.aborted) throw new Error("aborted");
 
   await waitForSlot(signal);
@@ -682,7 +679,7 @@ async function callClaude(
   for (let attempt = 0; attempt < 3; attempt++) {
     if (signal?.aborted) { cleanup(); throw new Error("aborted"); }
     try {
-      response = await anthropic.messages.create(params, {
+      response = await callModel(params, {
         signal: timeoutController.signal,
       });
       break;
@@ -708,21 +705,17 @@ async function callClaude(
   }
   cleanup();
   signal?.removeEventListener("abort", onUpstreamAbort);
-  const textBlock = response.content.find((b) => b.type === "text");
-  const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
 
   const price = MODEL_PRICES[params.model] || { input: 0, output: 0 };
-  const inputTokens = response.usage?.input_tokens || 0;
-  const outputTokens = response.usage?.output_tokens || 0;
-  const searches =
-    (response.usage as { server_tool_use?: { web_search_requests?: number } })
-      ?.server_tool_use?.web_search_requests || 0;
+  const inputTokens = response.inputTokens;
+  const outputTokens = response.outputTokens;
+  const searches = response.webSearchRequests;
   const cost =
     inputTokens * price.input +
     outputTokens * price.output +
     searches * WEB_SEARCH_COST;
 
-  return { text, cost, outputTokens };
+  return { text: response.text, cost, outputTokens };
 }
 
 export async function runAgentTree(
@@ -741,7 +734,7 @@ export async function runAgentTree(
   let totalCost = 0;
   let totalOutputTokens = 0;
 
-  function trackCost(result: ClaudeResult) {
+  function trackCost(result: AIProviderResult) {
     totalCost += result.cost;
     totalOutputTokens += result.outputTokens;
     // Rough heuristic: ~80 output tokens/min of equivalent human work.
@@ -755,9 +748,9 @@ export async function runAgentTree(
   }
 
   async function call(
-    params: Anthropic.MessageCreateParamsNonStreaming,
+    params: AIMessageCreateParamsNonStreaming,
   ): Promise<string> {
-    const result = await callClaude(params, signal);
+    const result = await callAIProvider(params, signal);
     trackCost(result);
     return result.text;
   }
@@ -766,8 +759,8 @@ export async function runAgentTree(
   // we abort the primary and run a fast haiku fallback so the agent ALWAYS
   // produces output (instead of erroring out or hanging the tree).
   async function callOrFallback(
-    primary: Anthropic.MessageCreateParamsNonStreaming,
-    fallback: Anthropic.MessageCreateParamsNonStreaming,
+    primary: AIMessageCreateParamsNonStreaming,
+    fallback: AIMessageCreateParamsNonStreaming,
     deadlineMs: number,
   ): Promise<string> {
     const innerAbort = new AbortController();
@@ -777,7 +770,7 @@ export async function runAgentTree(
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const primaryPromise = (async () => {
-        const result = await callClaude(primary, innerAbort.signal);
+        const result = await callAIProvider(primary, innerAbort.signal);
         trackCost(result);
         return result.text;
       })();
@@ -812,7 +805,7 @@ export async function runAgentTree(
     depth: number,
     specialty?: Specialty,
     customSpecialist?: CustomSpecialist,
-  ): Anthropic.MessageCreateParamsNonStreaming {
+  ): AIMessageCreateParamsNonStreaming {
     // Specialists / leaves / custom: produce a brief answer.
     if (specialty || customSpecialist || depth >= cfg.maxDepth) {
       const persona = customSpecialist
@@ -914,14 +907,8 @@ export async function runAgentTree(
   }
 
   async function runScoutLocal(p: string): Promise<string | null> {
-    try {
-      const text = await call(buildScoutPrompt(p));
-      const trimmed = text.trim();
-      if (!trimmed || trimmed.toUpperCase().includes("NONE")) return null;
-      return trimmed;
-    } catch {
-      return null;
-    }
+    void p;
+    return null;
   }
 
   async function runExtractor(
@@ -1244,7 +1231,7 @@ Be decisive.`,
     emit({ type: "agent_thinking", id });
 
     try {
-      let params: Anthropic.MessageCreateParamsNonStreaming;
+      let params: AIMessageCreateParamsNonStreaming;
 
       // Answer-producing agents (leaves + specialists) get the shared doc/scout
       // context inlined via cache_control so facts survive even if upstream
@@ -1341,7 +1328,7 @@ Be decisive.`,
       // The Brain MUST decompose. If it returned an answer, retry once with a
       // more forceful prompt that uses the previous answer as context.
       if (depth === 0 && parsed.type !== "subtasks") {
-        const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
+        const retryParams: AIMessageCreateParamsNonStreaming = {
           model: MODEL_IDS.opus,
           max_tokens: 900,
           system: `You are THE BRAIN. Your previous output was wrong — you answered directly when you MUST decompose. Try again. ONLY output JSON. Split into ${cfg.rootFanout} subtasks. Include 1-3 customSpecialists (invented roles with name/emoji/role).`,
@@ -1368,7 +1355,7 @@ Be decisive.`,
         !customSpecialist &&
         parsed.type !== "subtasks"
       ) {
-        const retryParams: Anthropic.MessageCreateParamsNonStreaming = {
+        const retryParams: AIMessageCreateParamsNonStreaming = {
           model: MODEL_IDS[tier],
           max_tokens: 500,
           system: `Your previous output was wrong — you answered when you MUST decompose. Split this task into 2-3 atomic subtasks. JSON ONLY:`,

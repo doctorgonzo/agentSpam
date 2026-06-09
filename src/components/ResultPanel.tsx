@@ -180,7 +180,7 @@ export default function ResultPanel({
               <div className="bg-zinc-800/40 border border-zinc-500/30 rounded-xl p-5">
                 <div className="flex items-baseline justify-between mb-3">
                   <div className="text-zinc-300 text-[10px] uppercase tracking-widest font-bold">
-                    Solo Claude · same prompt, no tree
+                    Solo model · same prompt, no tree
                   </div>
                   <div className="text-zinc-300/60 text-[10px] font-mono">
                     {soloElapsedMs ? `${(soloElapsedMs / 1000).toFixed(1)}s` : ""}

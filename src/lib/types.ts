@@ -69,8 +69,8 @@ export type AgentEvent =
   | { type: "done" };
 
 export const MODEL_PRICES: Record<string, { input: number; output: number }> = {
-  "claude-sonnet-4-6": { input: 3 / 1e6, output: 15 / 1e6 },
-  "claude-haiku-4-5-20251001": { input: 1 / 1e6, output: 5 / 1e6 },
+  "claude-opus-4-6": { input: 5 / 1e6, output: 25 / 1e6 },
+  "anthropic/claude-opus-4.6": { input: 5 / 1e6, output: 25 / 1e6 },
 };
 
 export const WEB_SEARCH_COST = 0.01;
@@ -92,9 +92,9 @@ export interface SpawnRequest {
 }
 
 export const MODEL_IDS: Record<ModelTier, string> = {
-  opus: "claude-sonnet-4-6", // using sonnet as "brain" to save $$ — swap to opus for demo day
-  sonnet: "claude-haiku-4-5-20251001",
-  haiku: "claude-haiku-4-5-20251001",
+  opus: process.env.ANTHROPIC_MODEL ?? process.env.AI_MODEL ?? "claude-opus-4-6",
+  sonnet: process.env.ANTHROPIC_MODEL ?? process.env.AI_MODEL ?? "claude-opus-4-6",
+  haiku: process.env.ANTHROPIC_MODEL ?? process.env.AI_MODEL ?? "claude-opus-4-6",
 };
 
 export const MODEL_LABELS: Record<ModelTier, string> = {

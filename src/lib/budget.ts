@@ -2,7 +2,7 @@
 // warm Vercel instances — if traffic spins up >1 region simultaneously,
 // you can exceed the cap by a factor of the instance count. Good enough
 // for a hackathon demo with low traffic. The real protection is at the
-// Anthropic console (set a monthly hard cap there too).
+// provider console (set a monthly hard cap there too).
 
 type Mode = "dev" | "demo";
 

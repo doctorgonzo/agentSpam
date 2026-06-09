@@ -1,6 +1,6 @@
 import { pingPresence, getPresenceList } from "@/lib/presence";
 
-// Edge-fast — no Anthropic calls here, just reading geo headers and
+// Edge-fast — no provider calls here, just reading geo headers and
 // touching the in-memory presence map.
 export const runtime = "nodejs"; // keep nodejs so the in-memory map persists across requests in the same instance
 

@@ -1,13 +1,12 @@
 import crypto from "node:crypto";
-import Anthropic from "@anthropic-ai/sdk";
 import { budgetStatus, recordCost } from "@/lib/budget";
 import { pingPresence } from "@/lib/presence";
+import { callModel } from "@/lib/ai-client";
+import { MODEL_IDS, MODEL_PRICES } from "@/lib/types";
 
 export const maxDuration = 60;
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-// Clean single-Claude foil for the side-by-side comparison.
+// Clean single-model foil for the side-by-side comparison.
 // NO system prompt, NO engineering. Same model as the Brain. Raw user
 // prompt straight to messages.create. The whole point of this endpoint
 // is to give the user's tree something honest to be measured against.
@@ -46,7 +45,7 @@ export async function POST(req: Request) {
     });
   }
 
-  // Fire-and-forget presence ping — single-Claude users should also show
+  // Fire-and-forget presence ping — single-model users should also show
   // up on the map. Same IP-hash scheme as /api/spawn.
   try {
     const ip =
@@ -73,22 +72,22 @@ export async function POST(req: Request) {
 
   const startedAt = Date.now();
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+    const model = MODEL_IDS.opus;
+    const response = await callModel({
+      model,
       max_tokens: 1500,
       messages: [{ role: "user", content: prompt }],
     });
-    const textBlock = response.content.find((b) => b.type === "text");
-    const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
-    // Record cost using sonnet-4-6 pricing.
-    const inTok = response.usage?.input_tokens ?? 0;
-    const outTok = response.usage?.output_tokens ?? 0;
-    recordCost(inTok * (3 / 1e6) + outTok * (15 / 1e6), solomode);
+    const price = MODEL_PRICES[model] || { input: 0, output: 0 };
+    recordCost(
+      response.inputTokens * price.input + response.outputTokens * price.output,
+      solomode,
+    );
     return new Response(
       JSON.stringify({
-        text,
+        text: response.text,
         elapsedMs: Date.now() - startedAt,
-        model: "claude-sonnet-4-6",
+        model,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
