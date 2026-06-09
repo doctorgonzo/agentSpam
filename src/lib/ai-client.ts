@@ -110,7 +110,11 @@ function extractText(response: Anthropic.Message | ChatCompletionLike): string {
     throw new Error(`AI provider request failed: ${message}`);
   }
 
-  throw new Error("AI provider returned an unexpected response shape");
+  const keys =
+    response && typeof response === "object"
+      ? Object.keys(response).slice(0, 12).join(", ") || "none"
+      : typeof response;
+  throw new Error(`AI provider returned an unexpected response shape (keys: ${keys})`);
 }
 
 export async function callModel(
