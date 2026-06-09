@@ -100,6 +100,9 @@ function extractText(response: Anthropic.Message | ChatCompletionLike): string {
       .trim();
   }
 
+  const stringContent = (response as { string?: unknown }).string;
+  if (typeof stringContent === "string") return stringContent.trim();
+
   const providerError = response as ChatCompletionLike;
   const message =
     providerError.error?.message ||
