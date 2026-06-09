@@ -10,32 +10,6 @@ export interface AIResult {
   webSearchRequests: number;
 }
 
-interface ChatCompletionLike {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
-    };
-  }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-  };
-  error?: {
-    message?: string;
-    type?: string;
-  };
-  message?: string;
-  type?: string;
-}
-
-interface UsageLike {
-  input_tokens?: number;
-  output_tokens?: number;
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  server_tool_use?: { web_search_requests?: number };
-}
-
 const DEFAULT_BASE_URL = "https://agentrouter.org/";
 
 function normalizeAnthropicBaseUrl(value?: string | null): string {
@@ -80,48 +54,15 @@ function providerErrorMessage(err: unknown): string {
   return detail ? `${fallback}: ${detail}` : fallback;
 }
 
-function extractText(response: Anthropic.Message | ChatCompletionLike): string {
-  const anthropicContent = (response as Anthropic.Message).content;
-  if (Array.isArray(anthropicContent)) {
-    return anthropicContent
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("")
-      .trim();
-  }
-
-  const chatContent = (response as ChatCompletionLike).choices?.[0]?.message
-    ?.content;
-  if (typeof chatContent === "string") return chatContent.trim();
-  if (Array.isArray(chatContent)) {
-    return chatContent
-      .map((part) => (part.type === "text" ? part.text ?? "" : ""))
-      .join("")
-      .trim();
-  }
-
-  const providerError = response as ChatCompletionLike;
-  const message =
-    providerError.error?.message ||
-    providerError.message ||
-    providerError.error?.type ||
-    providerError.type;
-  if (message) {
-    throw new Error(`AI provider request failed: ${message}`);
-  }
-
-  throw new Error("AI provider returned an unexpected response shape");
-}
-
 export async function callModel(
   params: AIMessageCreateParamsNonStreaming,
   options?: { signal?: AbortSignal },
 ): Promise<AIResult> {
-  let response: Anthropic.Message | ChatCompletionLike;
+  let response: Anthropic.Message;
   try {
     response = await getClient().messages.create(params, {
       signal: options?.signal,
-    }) as Anthropic.Message | ChatCompletionLike;
+    });
   } catch (err) {
     const normalized = new Error(providerErrorMessage(err)) as Error & {
       status?: number;
@@ -129,13 +70,21 @@ export async function callModel(
     normalized.status = (err as { status?: number })?.status;
     throw normalized;
   }
-  const text = extractText(response);
-  const usage = (response as { usage?: UsageLike }).usage;
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+  const usage = response.usage as
+    | (typeof response.usage & {
+        server_tool_use?: { web_search_requests?: number };
+      })
+    | undefined;
 
   return {
     text,
-    inputTokens: usage?.input_tokens ?? usage?.prompt_tokens ?? 0,
-    outputTokens: usage?.output_tokens ?? usage?.completion_tokens ?? 0,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
     webSearchRequests: usage?.server_tool_use?.web_search_requests ?? 0,
   };
 }
