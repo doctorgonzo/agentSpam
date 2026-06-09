@@ -366,7 +366,7 @@ export default function Home() {
       setSoloElapsedMs(null);
       setSoloRunning(true);
 
-      // Fire the single-model foil in parallel with the main tree run.
+      // Fire the single-Claude foil in parallel with the main tree run.
       // Same prompt, no system prompt, no decomposition — just one shot for
       // the side-by-side comparison.
       (async () => {
@@ -649,8 +649,8 @@ export default function Home() {
               <div
                 title={
                   soloRunning
-                    ? "Single model (no decomposition) is racing your tree…"
-                    : "Single model finished — view its answer alongside yours in the synthesis modal"
+                    ? "Single Claude (no decomposition) is racing your tree…"
+                    : "Single Claude finished — view its answer alongside yours in the synthesis modal"
                 }
                 className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] font-mono ${
                   soloRunning
@@ -659,7 +659,7 @@ export default function Home() {
                 }`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${soloRunning ? "bg-zinc-300 animate-pulse" : "bg-zinc-200"}`} />
-                <span>solo model</span>
+                <span>solo claude</span>
                 {soloElapsedMs !== null && (
                   <>
                     <span className="text-white/20">·</span>
