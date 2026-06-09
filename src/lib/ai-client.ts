@@ -80,16 +80,8 @@ function providerErrorMessage(err: unknown): string {
   return detail ? `${fallback}: ${detail}` : fallback;
 }
 
-function cleanStringResponse(value: string): string {
-  const trimmed = value.trim();
-  if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed) || trimmed.includes("aliyun_waf")) {
-    throw new Error("AI provider returned an HTML/WAF challenge instead of a model response");
-  }
-  return trimmed;
-}
-
 function extractText(response: Anthropic.Message | ChatCompletionLike | string): string {
-  if (typeof response === "string") return cleanStringResponse(response);
+  if (typeof response === "string") return response.trim();
 
   const anthropicContent = (response as Anthropic.Message).content;
   if (Array.isArray(anthropicContent)) {
@@ -111,7 +103,7 @@ function extractText(response: Anthropic.Message | ChatCompletionLike | string):
   }
 
   const stringContent = (response as { string?: unknown }).string;
-  if (typeof stringContent === "string") return cleanStringResponse(stringContent);
+  if (typeof stringContent === "string") return stringContent.trim();
 
   const providerError = response as ChatCompletionLike;
   const message =
